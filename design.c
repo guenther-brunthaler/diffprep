@@ -54,8 +54,8 @@ The "n" can be followed by one or more spaces which specify a repetition count f
 
 This means, however, that whitespace after a newline sequence needs to be represented differently.
 
-For this purpose, which is also required for whitespace at the beginning of the file, we introduce another command letter "i" which represents an "indentation" whitespace sequence: It has no effect on output, but all whitespace (that must follows the command letter) will be part of the output.
+Whitespace after a newline is represented by a word consisting only of whitespace.
 
 The hexdump transformation format will be simpler than the format above: All lines consist of a 2-digit upper-case hexadecimal number representing the next byte, an will be followed with a space and the ASCII representation of that byte (or an ASCII dot if the byte does not correspond to a printable ASCII character).
 
-Actually there will be 2 dump formats: one with and one without the ASCII dump.
+Actually there will be 2 dump formats: one with (-x) and one without (-b) the ASCII dump.

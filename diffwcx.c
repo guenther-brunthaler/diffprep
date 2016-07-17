@@ -120,15 +120,14 @@ int main(int argc, char **argv) {
          goto done;
    }
    {
-      int const cmd_indent= 'i';
       int const cmd_word= ':';
       int const cmd_newline= 'n';
       int const nl_rplc= ' ';
       /* States:
        * 0: Start of file.
        * 1: Converting adjacent newline charaters into nl_rplc characters.
-       * 2: Outputting whitespace at the end of a cmd_word or cmd_indent.
-       * 3: Outputing non-whitespace characters of a cmd_word command. */
+       * 2: Outputting whitespace at the end of a cmd_word.
+       * 3: Outputing non-whitespace characters of a cmd_word. */
       int state= 0;
       int cc, nc, count;
       if ((nc= getchar()) == EOF) {
@@ -151,7 +150,7 @@ int main(int argc, char **argv) {
                    * character. */
                   switch (state) {
                      case 1: ck_putc('\n'); /* Fall through. */
-                     case 0: ck_putc(cmd_indent); /* Fall through. */
+                     case 0: ck_putc(cmd_word); /* Fall through. */
                      case 3: state= 2; /* Fall through. */
                      default: assert(state == 2); ck_putc(cc);
                   }
