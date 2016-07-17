@@ -29,32 +29,32 @@ End.$
 will be transformed into the following output when operating in "word" splitting mode:
 
 -----
-w Hi, $
-w world!$
+:Hi, $
+:world!$
 n$
-w This is a test.$
+:This is a test.$
 $
-w There $
-w are $
-w 3 $
-w empty $
-w lines $
-w after $
-w this $
-w one:$
+:There $
+:are $
+:3 $
+:empty $
+:lines $
+:after $
+:this $
+:one:$
 n  $
-w End.$
+:End.$
 -----
 
-The output would be the same in character-split mode, only that the "w" lines would only contain single character "words".
+The output would be the same in character-split mode, only that the ":" lines would only contain single character "words".
 
-Here, lines start either with "w " which represents a word or character, or with "n" which represent adjacent newline sequences.
+Here, lines start either with ":" which represents a word or character, or with "n" which represent adjacent newline sequences.
 
 The "n" can be followed by one or more spaces which specify a repetition count for the newlines: No space means the line just represents a single newline sequence, one space means it represents two newlines, two spaces mean 3 newlines, and so on.
 
 This means, however, that whitespace after a newline sequence needs to be represented differently.
 
-For this purpose, which is also required for whitespace at the beginning of the file, we introduce another command liter "e" which represents an "empty" word/character: It has no effect on output, but all whitespace (that must follows the command letter) will be part of the output.
+For this purpose, which is also required for whitespace at the beginning of the file, we introduce another command letter "i" which represents an "indentation" whitespace sequence: It has no effect on output, but all whitespace (that must follows the command letter) will be part of the output.
 
 The hexdump transformation format will be simpler than the format above: All lines consist of a 2-digit upper-case hexadecimal number representing the next byte, an will be followed with a space and the ASCII representation of that byte (or an ASCII dot if the byte does not correspond to a printable ASCII character).
 

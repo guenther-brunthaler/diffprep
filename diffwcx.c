@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdarg.h>
 #include <errno.h>
+#include <assert.h>
 
 static void die(char const *msg, ...) {
    va_list args;
@@ -30,6 +31,10 @@ static void ck_printf(char const *format, ...) {
    va_start(args, format);
    if (vprintf(format, args) < 0) stdout_error();
    va_end(args);
+}
+
+static void ck_putc(int c) {
+   if (putchar(c) != c) stdout_error();
 }
 
 static void perror_exit(int e, char const *msg) {
@@ -115,7 +120,17 @@ int main(int argc, char **argv) {
          goto done;
    }
    {
-      int cc, nc, state= 0;
+      int const cmd_indent= 'i';
+      int const cmd_word= ':';
+      int const cmd_newline= 'n';
+      int const nl_rplc= ' ';
+      /* States:
+       * 0: Start of file.
+       * 1: Converting adjacent newline charaters into nl_rplc characters.
+       * 2: Outputting whitespace at the end of a cmd_word or cmd_indent.
+       * 3: Outputing non-whitespace characters of a cmd_word command. */
+      int state= 0;
+      int cc, nc, count;
       if ((nc= getchar()) == EOF) {
          chk_stdin();
          goto done;
@@ -123,8 +138,32 @@ int main(int argc, char **argv) {
       while ((cc= nc) != EOF) {
          if ((nc= getchar()) == EOF) chk_stdin();
          switch (mode) {
-            case 'w': case 'c': case 'x': case 'b':
-               
+            case 'w': case 'c':
+               if (cc == 0x0a) {
+                  /* What we consider to be a newline character. */
+                  switch (state) {
+                     case 2: case 3: ck_putc('\n'); /* Fall through. */
+                     case 0: ck_putc(cmd_newline); state= 1; break;
+                     default: assert(state == 1); ck_putc(nl_rplc);
+                  }
+               } else if (cc <= 0x20 || cc == 0x7f) {
+                  /* What we consider to be another kind of whitspace
+                   * character. */
+                  switch (state) {
+                     case 1: ck_putc('\n'); /* Fall through. */
+                     case 0: ck_putc(cmd_indent); /* Fall through. */
+                     case 3: state= 2; /* Fall through. */
+                     default: assert(state == 2); ck_putc(cc);
+                  }
+               } else {
+                  /* What we consider to be a normal non-whitespace
+                   * character. */
+                  switch (state) {
+                     case 1: case 2: ck_putc('\n'); /* Fall through. */
+                     case 0: ck_putc(cmd_word); state= 3; /* Fall through. */
+                     default: assert(state == 3); ck_putc(cc);
+                  }
+               }
                break;
             default: die("Not yet implemented!");
          }
