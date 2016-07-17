@@ -13,37 +13,45 @@ static void die(char const *msg, ...) {
 }
 
 int main(int argc, char **argv) {
-   int mode= 'w';
+   int reverse= 0;
+   int split= 'w';
    if (argc > 1) {
       int optind, argpos;
       char *arg= argv[optind= 1];
       for (argpos= 0;; ) {
-         switch (arg[argpos]) {
+         int c;
+         switch (c= arg[argpos]) {
             case '-':
                if (argpos) goto bad_option;
                switch (arg[++argpos]) {
                   case '-':
-                     if (arg[argpos + 1]) goto bad_option; /* "--<text>". */
+                     if (c= arg[argpos + 1]) {
+                        die("Unsupported long option %s!", arg);
+                     }
                      ++optind; /* "--". */
                      goto end_of_options;
                   case '\0': goto end_of_options; /* "-". */
                }
                /* At first option switch character now. */
-               break;
-            case '\0':
+               continue;
+            case '\0': {
                if (++optind == argc) goto end_of_options;
                arg= argv[optind];
                argpos= 0;
-               break;
-            case 'w': case 'c': case 'x': case 'b':
-               if (!argpos) goto end_of_options;
-               mode= arg[argpos++];
-               break;
-            default:
-               if (!argpos) goto end_of_options;
-               bad_option:
-               die("Unsupported option -%c!", (int)(unsigned char)arg[argpos]);
+               continue;
+            }
          }
+         if (!argpos) goto end_of_options;
+         switch (c) {
+            case 'W': case 'C': case 'X': case 'B':
+               reverse=1;
+               /* Fall through. */
+            case 'w': case 'c': case 'x': case 'b':
+               split= c;
+               break;
+            default: bad_option: die("Unsupported option -%c!", c);
+         }
+         ++argpos;
       }
       end_of_options:
       if (optind != argc) die("To many arguments!");
