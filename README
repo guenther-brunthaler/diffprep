@@ -1,0 +1,3 @@
+This project is about a preprocessor/postprocessor for "diff" and
+"patch", allowing to create word- and character-based diffs and
+patches.
