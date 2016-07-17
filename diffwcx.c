@@ -13,8 +13,7 @@ static void die(char const *msg, ...) {
 }
 
 int main(int argc, char **argv) {
-   int reverse= 0;
-   int split= 'w';
+   int mode= 'w';
    if (argc > 1) {
       int optind, argpos;
       char *arg= argv[optind= 1];
@@ -44,10 +43,8 @@ int main(int argc, char **argv) {
          if (!argpos) goto end_of_options;
          switch (c) {
             case 'W': case 'C': case 'X': case 'B':
-               reverse=1;
-               /* Fall through. */
             case 'w': case 'c': case 'x': case 'b':
-               split= c;
+               mode= c;
                break;
             default: bad_option: die("Unsupported option -%c!", c);
          }
