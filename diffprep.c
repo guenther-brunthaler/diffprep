@@ -1,5 +1,5 @@
 static char const version_info[]=
-   "$APPLICATION_NAME Version 2016.200.1\n"
+   "$APPLICATION_NAME Version 2016.200.2\n"
    "\n"
    "Copyright (c) 2016 Guenther Brunthaler. All rights reserved.\n"
    "\n"
@@ -74,11 +74,11 @@ static char const help[]=
    "-C: Convert a file produced by -c back into a normal text file with an\n"
    "    unlimited number of characters in its lines.\n"
    "\n"
-   "-m: Convert a binary file into an intermediate text format containing\n"
+   "-x: Convert a binary file into an intermediate text format containing\n"
    "    only a single byte in every line, formatted as an uppercase 2-digit\n"
    "    hexadecimal ASCII number. Use this for binary-diffing and merging.\n"
    "\n"
-   "-M: Convert a text file produced by -m back into a normal binary file\n"
+   "-X: Convert a text file produced by -x back into a normal binary file\n"
    "    with an unstructured layout which is not line-oriented in any way.\n"
    "\n"
    "-b: Convert a binary file into an intermediate text format containing\n"
@@ -88,15 +88,22 @@ static char const help[]=
    "-B: Convert a text file produced by -b back into a normal binary file\n"
    "    with an unstructured layout which is not line-oriented in any way.\n"
    "\n"
-   "-x: Like -m, but add an ASCII dump of each character to the end of the\n"
-   "    line after its hex dump, provided it is not a control character.\n"
-   "    This is helpful if part of the binary data is actually ASCII text,\n"
-   "    and helps a human reader of the output file correlate the hex\n"
-   "    values with the ASCII characters.\n"
+   "-n <count>: Specifies how many values per line options -x and -b will\n"
+   "    emit. This count is 1 by default, because otherwise it would not be\n"
+   "    possible to find changes with byte- or bit-granularity. However, it\n"
+   "    makes sense, for example, to display 8 bits per line with -b if\n"
+   "    byte granularity is sufficient, or to display 3 bytes per line with\n"
+   "    -x as pixel values of an uncompressed 24-bit RGB raw image.\n"
    "\n"
-   "-X: Like -M, except that the ASCII dump is completely ignored. Only the\n"
-   "    hexadecimal values are read and converted back.\n"
-   "    \n"
+   "-a: Add an ASCII dump of each byte after the end of the line normally\n"
+   "    produced as the output of options -x and -b, provided it is not\n"
+   "    invisible or a control character. This is helpful if part of the\n"
+   "    binary data is actually ASCII text, and helps a human reader of the\n"
+   "    output file correlate the hex values with the ASCII characters. The\n"
+   "    ASCII dump will be ignored when the file is converted back into its\n"
+   "    original format; only the values at the left side of the dump will\n"
+   "    be processed.\n"
+   "\n"
    "-h: Display this help.\n"
    "\n"
    "-V: Display only the copyright and version information.\n"
@@ -254,6 +261,8 @@ static void bitdump(int byte) {
 
 int main(int argc, char **argv) {
    int mode= 'w';
+   int ascii_dump= 0;
+   unsigned units_per_line= 1;
    #ifdef MALLOC_TRACE
        assert(mcheck_pedantic(0) == 0);
        (void)mallopt(M_PERTURB, (int)0xaaaaaaaa);
@@ -264,8 +273,10 @@ int main(int argc, char **argv) {
       (void)setlocale(LC_ALL, "");
    #endif
    if (argc > 1) {
-      int optind, argpos;
-      char *arg= argv[optind= 1];
+      int optind= 1, argpos;
+      char *arg;
+      process_arg:
+      arg= argv[optind];
       for (argpos= 0;; ) {
          int c;
          switch (c= arg[argpos]) {
@@ -283,18 +294,43 @@ int main(int argc, char **argv) {
                /* At first option switch character now. */
                continue;
             case '\0': {
+               next_arg:
                if (++optind == argc) goto end_of_options;
-               arg= argv[optind];
-               argpos= 0;
-               continue;
+               goto process_arg;
             }
          }
          if (!argpos) goto end_of_options;
          switch (c) {
-            case 'W': case 'C': case 'X': case 'M': case 'B':
-            case 'w': case 'c': case 'x': case 'm': case 'b':
+            case 'W': case 'C': case 'J': case 'X': case 'B':
+            case 'w': case 'c': case 'j': case 'x': case 'b':
                mode= c;
                break;
+            case 'a': ascii_dump= 1; break;
+            case 'n':
+               if (!arg[++argpos]) {
+                  if (++optind == argc) {
+                     die("Missing argument for option -%c!", c);
+                  }
+                  arg= argv[optind];
+                  argpos= 0;
+               }
+               {
+                  unsigned long optval;
+                  {
+                     char *end;
+                     optval= strtoul(arg + argpos, &end, 0);
+                     if (!*arg || *end) {
+                        invalid_argument:
+                        die(
+                              "Invalid argument '%s' for option -%c!"
+                           ,  arg + argpos, c
+                        );
+                     }
+                  }
+                  units_per_line= (unsigned)optval;
+                  if (units_per_line != optval) goto invalid_argument;
+               }
+               goto next_arg;
             case 'h': appinfo(help, argv[0]);
                /* Fall through. */
             case 'V': appinfo(version_info, argv[0]); goto done;
@@ -316,18 +352,18 @@ int main(int argc, char **argv) {
     * sure. */
    (void)mbtowc(0, 0, 0);
    switch (mode) {
-      case 'x': case 'm': case 'b':
+      case 'j': case 'x': case 'b':
          {
             register int c;
             while ((c= getchar()) != EOF) {
                if (mode == 'b') bitdump(c);
-               else if (mode == 'm' || c == 0x20) ck_printf("%02X\n", c);
+               else if (mode == 'x' || c == 0x20) ck_printf("%02X\n", c);
                else ck_printf("%02X %c\n", c, c > 0x20 && c < 0x7f ? c : '.');
             }
          }
          chk_stdin();
          break;
-      case 'X': case 'M':
+      case 'J': case 'X':
          {
             auto unsigned int b;
             int n, c;
