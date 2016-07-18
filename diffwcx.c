@@ -221,7 +221,13 @@ int main(int argc, char **argv) {
                   switch (state) {
                      case 1: case 2: ck_putc('\n'); /* Fall through. */
                      case 0: ck_putc(cmd_word); state= 3; /* Fall through. */
-                     default: assert(state == 3); ck_write(c, nc0);
+                     default: {
+                        assert(state == 3); ck_write(c, nc0);
+                        if (mode == 'c') {
+                           ck_putc('\n');
+                           state= 0;
+                        }
+                     }
                   }
                }
                assert(nc0 <= nc);
