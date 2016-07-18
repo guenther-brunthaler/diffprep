@@ -7,6 +7,12 @@ static char const version_info[]=
    "Distribution is permitted under the terms of the GPLv3.\n"
 ;
 
+/* User configuration option: Include "-D CONFIG_NO_LOCALE" in your CFLAGS in
+ * order to build a version without locale or MBCS/UTF-8 support. */
+#ifndef CONFIG_NO_LOCALE
+   #define CONFIG_NO_LOCALE 0
+#endif
+
 static char const help[]=
    "Usage: $APPLICATION_NAME [ <options> ... [--] ] [ <input_file> ]\n"
    "\n"
@@ -30,10 +36,16 @@ static char const help[]=
    "The options select the operation mode: Which kind of transformation is\n"
    "applied to the input file.\n"
    "\n"
+   #if CONFIG_NO_LOCALE
+   "Note that $APPLICATION_NAME has been built without locale support. Only\n"
+   "ASCII and single-byte character sets which are supersets of ASCII are\n"
+   "supported.\n"
+   #else
    "For operation modes which read text files, the LC_CTYPE locale category\n"
    "determines the expected encoding of the input file. For instance, this\n"
    "allows $APPLICATION_NAME to process UTF-8 encoded input correctly, if a\n"
    "UTF-8 locale is currently in effect.\n"
+   #endif
    "\n"
    "For every operation mode, there is a reverse operation mode which\n"
    "undoes the transformations made, converting a transformed file back\n"
@@ -98,7 +110,6 @@ static char const help[]=
 #include <stdarg.h>
 #include <errno.h>
 #include <assert.h>
-#include <locale.h>
 #include <limits.h>
 
 #ifdef MALLOC_TRACE
@@ -110,7 +121,12 @@ static char const help[]=
    #endif
 #endif
 
-#if defined __STDC_VERSION__ && __STDC_VERSION__ >= 199901
+#if !CONFIG_NO_LOCALE
+   #include <locale.h>
+#endif
+
+#if defined __STDC_VERSION__ && __STDC_VERSION__ >= 199901 \
+    && !CONFIG_NO_LOCALE
    #include <wctype.h>
 #else
    #include <ctype.h>
@@ -169,6 +185,38 @@ static void perror_exit(int e, char const *msg) {
    exit(EXIT_FAILURE);
 }
 
+#if CONFIG_NO_LOCALE
+   #ifdef wctomb
+      #undef wctomb
+   #endif
+   #define wctomb fake_wctomb
+   #ifdef mbtowc
+      #undef mbtowc
+   #endif
+   #define mbtowc fake_mbtowc
+   #ifdef MB_LEN_MAX
+      #undef MB_LEN_MAX
+   #endif
+   #define MB_LEN_MAX 1
+   #ifdef MB_CUR_MAX
+      #undef MB_CUR_MAX
+   #endif
+   #define MB_CUR_MAX MB_LEN_MAX
+
+   static int wctomb(char *s, wchar_t wchar) {
+      if (!s) return 0;
+      s[0]= (char)(unsigned)wchar;
+      return 1;
+   }
+
+   static int mbtowc(wchar_t *pwc, const char *s, size_t n) {
+      if (!s) return 0;
+      if (n < 1) return -1;
+      if (pwc) *pwc= (wchar_t)(int)s[0];
+      return 1;
+   }
+#endif
+
 static void die_with_wchar(char const *msg, wchar_t wc) {
    char chr[MB_LEN_MAX + 1];
    int r;
@@ -208,11 +256,13 @@ int main(int argc, char **argv) {
    int mode= 'w';
    #ifdef MALLOC_TRACE
        assert(mcheck_pedantic(0) == 0);
-       (void)mallopt (M_PERTURB, (int)0xaaaaaaaa);
+       (void)mallopt(M_PERTURB, (int)0xaaaaaaaa);
        mcheck_check_all();
        mtrace();
    #endif
-   (void)setlocale(LC_ALL, "");
+   #if !CONFIG_NO_LOCALE
+      (void)setlocale(LC_ALL, "");
+   #endif
    if (argc > 1) {
       int optind, argpos;
       char *arg= argv[optind= 1];
