@@ -1,6 +1,6 @@
 #! /bin/sh
 set -e
-target=diffwcx
+target=diffprep
 cleanup() {
 	local rc; rc=$?
 	test -n "$TD" && rm -r -- "$TD"

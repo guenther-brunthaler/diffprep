@@ -1,4 +1,4 @@
-TARGETS = diffwcx
+TARGETS = diffprep
 
 all: $(TARGETS)
 
