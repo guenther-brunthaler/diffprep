@@ -1,0 +1,48 @@
+#! /bin/sh
+set -e
+target=diffwcx
+cleanup() {
+	local rc; rc=$?
+	test -n "$TD" && rm -r -- "$TD"
+	test $rc = 0 || echo "$0 failed!" >& 2
+}
+TD=
+trap cleanup 0
+
+redir_output() {
+	local target; target=$1; shift
+	"$@" > "$target"
+}
+
+run() {
+	"$@" && return
+	{
+		echo "There was a problem executing the following command:"
+		echo ">>>$*<<<"
+		echo "Examnine, then 'exit' to quit."
+	} >& 2
+	xterm -e "$SHELL" -l
+	false || exit
+}
+
+make -s -- "$target"
+test -f "$target"
+test -x "$target"
+TD=`mktemp -d -- "${TMPDIR:-/tmp}/${0##*/}.XXXXXXXXXX"`
+for f
+do
+	test -f "$f"
+	# For examiner's sake.
+	printf '%s\n' "$f" > "$TD"/origin
+	cat "$f" > "$TD"/from
+	cp -p -- "$target" "$TD"/
+	for modes in bB xX wW cC
+	do
+		into=${modes%?}
+		back=${modes#?}
+		run ./"$target" -$into "$TD"/from > "$TD"/into
+		run redir_output "$TD"/back ./"$target" -$back < "$TD"/into
+		run cmp -s -- ""$TD"/back" "$f"
+	done
+done
+echo "All tests passed!" >& 2

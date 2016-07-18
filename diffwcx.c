@@ -21,6 +21,10 @@
 #endif
 
 
+#define CMD_WORD ':'
+#define CMD_NEWLINE 'n'
+#define NL_RPLC ' '
+
 static void die(char const *msg, ...) {
    va_list args;
    va_start(args, msg);
@@ -151,9 +155,6 @@ int main(int argc, char **argv) {
          goto done;
    }
    {
-      int const cmd_word= ':';
-      int const cmd_newline= 'n';
-      int const nl_rplc= ' ';
       size_t const mb_cur_max= MB_CUR_MAX;
       int state= 0;
       char c[MB_LEN_MAX];
@@ -203,20 +204,20 @@ int main(int argc, char **argv) {
                if (wc == L'\n') {
                   switch (state) {
                      case 2: case 3: ck_putc('\n'); /* Fall through. */
-                     case 0: ck_putc(cmd_newline); state= 1; break;
-                     default: assert(state == 1); ck_putc(nl_rplc);
+                     case 0: ck_putc(CMD_NEWLINE); state= 1; break;
+                     default: assert(state == 1); ck_putc(NL_RPLC);
                   }
                } else if (iswspace(wc)) {
                   switch (state) {
                      case 1: ck_putc('\n'); /* Fall through. */
-                     case 0: ck_putc(cmd_word); /* Fall through. */
+                     case 0: ck_putc(CMD_WORD); /* Fall through. */
                      case 3: state= 2; /* Fall through. */
                      default: assert(state == 2); ck_write(c, nc0);
                   }
                } else {
                   switch (state) {
                      case 1: case 2: ck_putc('\n'); /* Fall through. */
-                     case 0: ck_putc(cmd_word); state= 3; /* Fall through. */
+                     case 0: ck_putc(CMD_WORD); state= 3; /* Fall through. */
                      default: {
                         assert(state == 3); ck_write(c, nc0);
                         if (mode == 'c') {
@@ -231,28 +232,24 @@ int main(int argc, char **argv) {
                assert(mode == 'W' || mode == 'C');
                /* States:
                 * 0: Initial state.
-                * 1: Convert <nl_rplc>s into newline charaters.
+                * 1: Convert <NL_RPLC>s into newline charaters.
                 * 2: Output characters before next '\n'. */
                switch (state) {
                   case 0:
-                     /* GCC Bug? It was not possible to do the following
-                      * (including the casts into wchar_t) with a switch(),
-                      * because gcc 6.1.1 20160707 complained "case label does
-                      * not reduce to an integer constant". WTF? If 'wchar_t'
-                      * is not an integer, what is it then??? */
-                     if (wc == (wchar_t)cmd_word) {
-                        state= 2;
-                     } else if (wc == (wchar_t)cmd_newline) {
-                        state= 1;
-                        goto nlgen;
-                     } else {
-                        die("Invalid line command \"%lc\"!", wc);
+                     switch (wc) {
+                        case (wchar_t)CMD_WORD: state= 2; break;
+                        case (wchar_t)CMD_NEWLINE: state= 1; goto nlgen;
+                        default: die("Invalid line command \"%lc\"!", wc);
                      }
                      break;
                   case 1:
-                     if (wc == (wchar_t)nl_rplc) nlgen: ck_putc('\n');
-                     else if (wc == L'\n') state= 0;
-                     else die("Invalid newline substitute \"%lc\"!", wc);
+                     switch (wc) {
+                        case (wchar_t)NL_RPLC: nlgen: ck_putc('\n'); break;
+                        case L'\n': state= 0; break;
+                        default: {
+                           die("Invalid newline substitute \"%lc\"!", wc);
+                        }
+                     }
                      break;
                   case 2: {
                      if (wc == L'\n') state= 0;
