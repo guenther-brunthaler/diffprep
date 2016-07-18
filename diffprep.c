@@ -437,6 +437,13 @@ int main(int argc, char **argv) {
          if (nc0 < nc) (void)memmove(c, c + nc0, nc - nc0);
          nc-= nc0;
       }
+      switch (mode) {
+         case 'w': case 'c': {
+            switch (state) {
+               case 1: case 2: case 3: ck_putc('\n');
+            }
+         }
+      }
    }
    done:
    if (fflush(0)) die("Error writing to output stream!");
