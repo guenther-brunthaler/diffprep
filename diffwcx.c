@@ -154,11 +154,6 @@ int main(int argc, char **argv) {
       int const cmd_word= ':';
       int const cmd_newline= 'n';
       int const nl_rplc= ' ';
-      /* States:
-       * 0: Start of file.
-       * 1: Converting adjacent newline charaters into nl_rplc characters.
-       * 2: Outputting whitespace at the end of a cmd_word.
-       * 3: Outputing non-whitespace characters of a cmd_word. */
       size_t const mb_cur_max= MB_CUR_MAX;
       int state= 0;
       char c[MB_LEN_MAX];
@@ -171,7 +166,8 @@ int main(int argc, char **argv) {
          if ((nnul= wctomb(nul, L'\0')) < 1) die("Unsupported locale!");
       }
       for (;;) {
-         /* Read as much bytes into c[] as possible. */
+         /* Read as much bytes into c[] as possible, but not more than the
+          * longest possible MBCS-sequence. */
          while (!eof && nc < mb_cur_max) {
             if ((b= getchar()) == EOF) {
                chk_stdin();
@@ -230,12 +226,44 @@ int main(int argc, char **argv) {
                      }
                   }
                }
-               assert(nc0 <= nc);
-               if (nc0 < nc) (void)memmove(c, c + nc0, nc - nc0);
-               nc-= nc0;
                break;
-            default: die("Not yet implemented!");
+            default: {
+               assert(mode == 'W' || mode == 'C');
+               /* States:
+                * 0: Initial state.
+                * 1: Convert <nl_rplc>s into newline charaters.
+                * 2: Output characters before next '\n'. */
+               switch (state) {
+                  case 0:
+                     /* GCC Bug? It was not possible to do the following
+                      * (including the casts into wchar_t) with a switch(),
+                      * because gcc 6.1.1 20160707 complained "case label does
+                      * not reduce to an integer constant". WTF? If 'wchar_t'
+                      * is not an integer, what is it then??? */
+                     if (wc == (wchar_t)cmd_word) {
+                        state= 2;
+                     } else if (wc == (wchar_t)cmd_newline) {
+                        state= 1;
+                        goto nlgen;
+                     } else {
+                        die("Invalid line command \"%lc\"!", wc);
+                     }
+                     break;
+                  case 1:
+                     if (wc == (wchar_t)nl_rplc) nlgen: ck_putc('\n');
+                     else if (wc == L'\n') state= 0;
+                     else die("Invalid newline substitute \"%lc\"!", wc);
+                     break;
+                  case 2: {
+                     if (wc == L'\n') state= 0;
+                     else ck_write(c, nc0);
+                  }
+               }
+            }
          }
+         assert(nc0 <= nc);
+         if (nc0 < nc) (void)memmove(c, c + nc0, nc - nc0);
+         nc-= nc0;
       }
    }
    done:
