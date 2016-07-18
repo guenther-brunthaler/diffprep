@@ -67,6 +67,21 @@ static void perror_exit(int e, char const *msg) {
    exit(EXIT_FAILURE);
 }
 
+static void die_with_wchar(char const *msg, wchar_t wc) {
+   char chr[MB_LEN_MAX + 1];
+   int r;
+   if ((r= wctomb(chr, wc)) < 1) {
+      die(
+            "Cannot display error message \"%s\" for wide character"
+            " with code point %#lx!"
+         ,  msg, (unsigned long)wc
+      );
+   }
+   assert((size_t)r < sizeof chr);
+   chr[r]= '\0';
+   die(msg, chr);
+}
+
 int main(int argc, char **argv) {
    int mode= 'w';
    (void)setlocale(LC_ALL, "");
@@ -231,7 +246,7 @@ int main(int argc, char **argv) {
             default: {
                assert(mode == 'W' || mode == 'C');
                /* States:
-                * 0: Initial state.
+                * 0: Initial state - parse command letter.
                 * 1: Convert <NL_RPLC>s into newline charaters.
                 * 2: Output characters before next '\n'. */
                switch (state) {
@@ -239,7 +254,9 @@ int main(int argc, char **argv) {
                      switch (wc) {
                         case (wchar_t)CMD_WORD: state= 2; break;
                         case (wchar_t)CMD_NEWLINE: state= 1; goto nlgen;
-                        default: die("Invalid line command \"%lc\"!", wc);
+                        default: {
+                           die_with_wchar("Invalid line command \"%s\"!", wc);
+                        }
                      }
                      break;
                   case 1:
@@ -247,7 +264,9 @@ int main(int argc, char **argv) {
                         case (wchar_t)NL_RPLC: nlgen: ck_putc('\n'); break;
                         case L'\n': state= 0; break;
                         default: {
-                           die("Invalid newline substitute \"%lc\"!", wc);
+                           die_with_wchar(
+                              "Invalid newline substitute \"%s\"!", wc
+                           );
                         }
                      }
                      break;
