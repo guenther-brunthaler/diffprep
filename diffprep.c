@@ -255,7 +255,7 @@ int main(int argc, char **argv) {
       end_of_options:
       if (optind < argc) {
          char const *fname= argv[optind++];
-         char const *fmode= strchr("xb", mode) ? "rb" : "r";
+         char const *fmode= strchr("xbm", mode) ? "rb" : "r";
          if (!freopen(fname, fmode, stdin)) {
             die("Could not open file \"%s\" in mode \"%s\"!", fname, fmode);
          }
