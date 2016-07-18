@@ -134,10 +134,6 @@ static void stdout_error(void) {
    die("Error writing to standard output stream!");
 }
 
-static void chk_stdout(void) {
-   if (ferror(stdout)) stdout_error();
-}
-
 static void ck_printf(char const *format, ...) {
    va_list args;
    va_start(args, format);
@@ -260,7 +256,6 @@ int main(int argc, char **argv) {
     * sure. */
    (void)mbtowc(0, 0, 0);
    switch (mode) {
-      int c;
       case 'x': case 'm': case 'b':
          {
             register int c;
@@ -274,11 +269,11 @@ int main(int argc, char **argv) {
          break;
       case 'X': case 'M':
          {
-            auto int c;
-            int n;
+            auto unsigned int b;
+            int n, c;
             errno= 0;
-            while ((n= scanf("%2x", &c)) == 1) {
-               if (putchar(c) == EOF) stdout_error();
+            while ((n= scanf("%2x", &b)) == 1) {
+               if (putchar((int)b) == EOF) stdout_error();
                while ((c= getchar()) != '\n') {
                   if (c == EOF) {
                      chk_stdin();
@@ -352,7 +347,6 @@ int main(int argc, char **argv) {
             int r;
             auto wchar_t wcbuf; /* Address will be taken. */
             if ((r= mbtowc(&wcbuf, c, nc)) == -1) {
-               bad_mbc:
                die(
                      eof
                   ?  "Incomplete multibyte character at end of input!"
