@@ -36,7 +36,7 @@ do
 	printf '%s\n' "$f" > "$TD"/origin
 	cat "$f" > "$TD"/from
 	cp -p -- "$target" "$TD"/
-	for modes in bB xX wW cC
+	for modes in bB mM xX wW cC
 	do
 		into=${modes%?}
 		back=${modes#?}

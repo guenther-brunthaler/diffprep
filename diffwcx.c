@@ -190,6 +190,14 @@ static void appinfo(const char *text, const char *app) {
    if (text) ck_puts(text);
 }
 
+static void bitdump(int byte) {
+   int mask;
+   for (mask= 0x80; mask; mask>>= 1) {
+      ck_putc(byte & mask ? '1' : '0');
+      ck_putc('\n');
+   }
+}
+
 int main(int argc, char **argv) {
    int mode= 'w';
    #ifdef MALLOC_TRACE
@@ -227,8 +235,8 @@ int main(int argc, char **argv) {
          }
          if (!argpos) goto end_of_options;
          switch (c) {
-            case 'W': case 'C': case 'X': case 'M':
-            case 'w': case 'c': case 'x': case 'm':
+            case 'W': case 'C': case 'X': case 'M': case 'B':
+            case 'w': case 'c': case 'x': case 'm': case 'b':
                mode= c;
                break;
             case 'h': appinfo(help, argv[0]);
@@ -253,11 +261,12 @@ int main(int argc, char **argv) {
    (void)mbtowc(0, 0, 0);
    switch (mode) {
       int c;
-      case 'x': case 'm':
+      case 'x': case 'm': case 'b':
          {
             register int c;
             while ((c= getchar()) != EOF) {
-               if (mode == 'm' || c == 0x20) ck_printf("%02X\n", c);
+               if (mode == 'b') bitdump(c);
+               else if (mode == 'm' || c == 0x20) ck_printf("%02X\n", c);
                else ck_printf("%02X %c\n", c, c > 0x20 && c < 0x7f ? c : '.');
             }
          }
@@ -285,6 +294,32 @@ int main(int argc, char **argv) {
             else bad_syntax: die("Input format syntax error!");
          }
          goto done;
+      case 'B': {
+         do {
+            int mask, byte, c;
+            for (byte= 0, mask= 0x80; mask; mask>>= 1) {
+               if ((c= getchar()) == EOF) {
+                  chk_stdin();
+                  if (mask == 0x80) goto done;
+                  die("Incomplete binary octet (8 bit byte) at end of input!");
+               }
+               switch (c) {
+                  case '0': c= 0; break;
+                  case '1': c= mask; break;
+                  default: goto bad_syntax;
+               }
+               byte|= c;
+               while ((c= getchar()) != '\n') {
+                  if (c == EOF) {
+                     chk_stdin();
+                     goto bad_syntax;
+                  }
+               }
+            }
+            if (putchar(byte) == EOF) stdout_error();
+         } while (!feof(stdin));
+         goto done;
+      }
    }
    {
       size_t const mb_cur_max= MB_CUR_MAX;
