@@ -1,5 +1,5 @@
 static char const version_info[]=
-   "$APPLICATION_NAME Version 2016.200\n"
+   "$APPLICATION_NAME Version 2016.200.1\n"
    "\n"
    "Copyright (c) 2016 Guenther Brunthaler. All rights reserved.\n"
    "\n"
@@ -372,6 +372,11 @@ int main(int argc, char **argv) {
          }
          switch (mode) {
             case 'w': case 'c':
+               /* States:
+                * 0: Start of file.
+                * 1: Convert <NL_RPLC>s into newline charaters.
+                * 2: Outputting whitespace at the end of a cmd_word.
+                * 3: Outputing non-whitespace characters of a cmd_word. */
                if (wc == L'\n') {
                   switch (state) {
                      case 2: case 3: ck_putc('\n'); /* Fall through. */
