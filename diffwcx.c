@@ -4,6 +4,22 @@
 #include <stdarg.h>
 #include <errno.h>
 #include <assert.h>
+#include <locale.h>
+#include <limits.h>
+
+
+#if defined __STDC_VERSION__ && __STDC_VERSION__ >= 199901
+   #include <wctype.h>
+#else
+   #include <ctype.h>
+   #ifdef iswspace
+      #undef iswspace
+   #endif
+   #define iswspace(wc) ( \
+      (wc) <= (wchar_t)UCHAR_MAX && isspace((int)(unsigned char)(wc)) \
+   )
+#endif
+
 
 static void die(char const *msg, ...) {
    va_list args;
@@ -37,6 +53,10 @@ static void ck_putc(int c) {
    if (putchar(c) != c) stdout_error();
 }
 
+static void ck_write(char *buf, size_t bytes) {
+   if (fwrite(buf, sizeof(char), bytes, stdout) != bytes) stdout_error();
+}
+
 static void perror_exit(int e, char const *msg) {
    errno= e;
    perror(msg);
@@ -45,6 +65,7 @@ static void perror_exit(int e, char const *msg) {
 
 int main(int argc, char **argv) {
    int mode= 'w';
+   (void)setlocale(LC_ALL, "");
    if (argc > 1) {
       int optind, argpos;
       char *arg= argv[optind= 1];
@@ -82,8 +103,18 @@ int main(int argc, char **argv) {
          ++argpos;
       }
       end_of_options:
+      if (optind < argc) {
+         char const *fname= argv[optind++];
+         char const *fmode= strchr("xb", mode) ? "rb" : "r";
+         if (!freopen(fname, fmode, stdin)) {
+            die("Could not open file \"%s\" in mode \"%s\"!", fname, fmode);
+         }
+      }
       if (optind != argc) die("Too many arguments!");
    }
+   /* Reset initial multibyte character conversion shift state - just to be
+    * sure. */
+   (void)mbtowc(0, 0, 0);
    switch (mode) {
       int c;
       case 'x': case 'b':
@@ -129,40 +160,72 @@ int main(int argc, char **argv) {
        * 2: Outputting whitespace at the end of a cmd_word.
        * 3: Outputing non-whitespace characters of a cmd_word. */
       int state= 0;
-      int cc, nc, count;
-      if ((nc= getchar()) == EOF) {
-         chk_stdin();
-         goto done;
+      char c[MB_LEN_MAX];
+      size_t nc0, nc= 0;
+      int nnul, b, eof= 0;
+      wchar_t wc;
+      {
+         /* Determine the length of the MBCS-encoding of L'\0'. */
+         char nul[MB_LEN_MAX];
+         if ((nnul= wctomb(nul, L'\0')) < 1) die("Unsupported locale!");
       }
-      while ((cc= nc) != EOF) {
-         if ((nc= getchar()) == EOF) chk_stdin();
+      for (;;) {
+         /* Read as much bytes into c[] as possible. */
+         while (!eof && nc < sizeof c) {
+            if ((b= getchar()) == EOF) {
+               chk_stdin();
+               eof= 1;
+               break;
+            }
+            c[nc++]= (char)b;
+         }
+         if (nc == 0) {
+            assert(eof);
+            break;
+         }
+         {
+            int r;
+            auto wchar_t wcbuf; /* Address will be taken. */
+            if ((r= mbtowc(&wcbuf, c, nc)) == -1) {
+               bad_mbc:
+               die(
+                     eof
+                  ?  "Incomplete multibyte character at end of input!"
+                  :  "Illegal character encoding encountered!"
+               );
+            }
+            if (r == 0) r= nnul;
+            assert(r > 0);
+            assert((size_t)r <= nc);
+            /* In contrary to <wcbuf>, <wc> might be a register variable. */
+            wc= wcbuf;
+            nc0= (size_t)r;
+         }
          switch (mode) {
             case 'w': case 'c':
-               if (cc == 0x0a) {
-                  /* What we consider to be a newline character. */
+               if (wc == L'\n') {
                   switch (state) {
                      case 2: case 3: ck_putc('\n'); /* Fall through. */
                      case 0: ck_putc(cmd_newline); state= 1; break;
                      default: assert(state == 1); ck_putc(nl_rplc);
                   }
-               } else if (cc <= 0x20 || cc == 0x7f) {
-                  /* What we consider to be another kind of whitspace
-                   * character. */
+               } else if (iswspace(wc)) {
                   switch (state) {
                      case 1: ck_putc('\n'); /* Fall through. */
                      case 0: ck_putc(cmd_word); /* Fall through. */
                      case 3: state= 2; /* Fall through. */
-                     default: assert(state == 2); ck_putc(cc);
+                     default: assert(state == 2); ck_write(c, nc0);
                   }
                } else {
-                  /* What we consider to be a normal non-whitespace
-                   * character. */
                   switch (state) {
                      case 1: case 2: ck_putc('\n'); /* Fall through. */
                      case 0: ck_putc(cmd_word); state= 3; /* Fall through. */
-                     default: assert(state == 3); ck_putc(cc);
+                     default: assert(state == 3); ck_write(c, nc0);
                   }
                }
+               assert(nc0 <= nc);
+               if (nc0 < nc) (void)memmove(c, c + nc0, nc - nc0);
+               nc-= nc0;
                break;
             default: die("Not yet implemented!");
          }
