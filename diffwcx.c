@@ -159,6 +159,7 @@ int main(int argc, char **argv) {
        * 1: Converting adjacent newline charaters into nl_rplc characters.
        * 2: Outputting whitespace at the end of a cmd_word.
        * 3: Outputing non-whitespace characters of a cmd_word. */
+      size_t const mb_cur_max= MB_CUR_MAX;
       int state= 0;
       char c[MB_LEN_MAX];
       size_t nc0, nc= 0;
@@ -171,7 +172,7 @@ int main(int argc, char **argv) {
       }
       for (;;) {
          /* Read as much bytes into c[] as possible. */
-         while (!eof && nc < sizeof c) {
+         while (!eof && nc < mb_cur_max) {
             if ((b= getchar()) == EOF) {
                chk_stdin();
                eof= 1;
