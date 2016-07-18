@@ -1,3 +1,21 @@
 This project is about a preprocessor/postprocessor for "diff" and
-"patch", allowing to create word- and character-based diffs and
-patches.
+"patch", allowing to create word-, character-, byte- or bit-based
+diffs and patches.
+
+It requires an ANSI-C 89 capable C compiler and a standard "make"
+utility.
+
+Run
+
+$ make
+
+to compile and build the program. If you want to build with
+specific compiler flags, you can invoke 'make' like this instead:
+
+$ make CFLAGS="-D NDEBUG -O3 -s"
+
+Then run
+
+$ ./diffprep -h
+
+for displaying help, copyright and usage information.
