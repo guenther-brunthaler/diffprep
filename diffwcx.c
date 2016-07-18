@@ -1,3 +1,87 @@
+static char const version_info[]=
+   "$APPLICATION_NAME Version 2016.200\n"
+   "\n"
+   "Copyright (c) 2016 Guenther Brunthaler. All rights reserved.\n"
+   "\n"
+   "This program is free software.\n"
+   "Distribution is permitted under the terms of the GPLv3.\n"
+;
+
+static char const help[]=
+   "Usage: $APPLICATION_NAME [ <options> ... [--] ] [ <input_file> ]\n"
+   "\n"
+   "$APPLICATION_NAME allows one to word-diff or character-diff text files,\n"
+   "and to byte-diff or bit-diff binary files.\n"
+   "\n"
+   "It is a preprocessor for 'diff', losslessly transforming its input\n"
+   "input into an intermediate line-based text format which can used with\n"
+   "all usual line-based 'diff', 'patch' and merge tools.\n"
+   "\n"
+   "After one is done diffing, merging or patching the transformed files,\n"
+   "$APPLICATION_NAME can be used again as a postprocessor for those files,\n"
+   "transforming the intermediate line-based format back into its original\n"
+   "form.\n"
+   "\n"
+   "By default, $APPLICATION_NAME reads from its standard input stream and\n"
+   "writes the transformed input to its standard output stream. If\n"
+   "<input_file> is specified, however, it reads that file rather than\n"
+   "standard input.\n"
+   "\n"
+   "The options select the operation mode: Which kind of transformation is\n"
+   "applied to the input file.\n"
+   "\n"
+   "For every operation mode, there is a reverse operation mode which\n"
+   "undoes the transformations made, converting a transformed file back\n"
+   "into its original format.\n"
+   "\n"
+   "The default transformation mode is -w (which does word-diff\n"
+   "preprocessing).\n"
+   "\n"
+   "Supported options:\n"
+   "\n"
+   "-w: Convert normal text into an intermediate format containing only a\n"
+   "    single word in every line. Use this for word-diffing.\n"
+   "\n"
+   "-W: Convert a file produced by -w back into a normal text file with an\n"
+   "    unlimited number of words in its lines.\n"
+   "\n"
+   "-c: Convert normal text into an intermediate format containing only a\n"
+   "    single character in every line. Use this for character-based\n"
+   "    diffing.\n"
+   "\n"
+   "-C: Convert a file produced by -c back into a normal text file with an\n"
+   "    unlimited number of characters in its lines.\n"
+   "\n"
+   "-m: Convert a binary file into an intermediate text format containing\n"
+   "    only a single byte in every line, formatted as an uppercase 2-digit\n"
+   "    hexadecimal ASCII number. Use this for binary-diffing and merging.\n"
+   "\n"
+   "-M: Convert a text file produced by -m back into a normal binary file\n"
+   "    with an unstructured layout which is not line-oriented in any way.\n"
+   "\n"
+   "-b: Convert a binary file into an intermediate text format containing\n"
+   "    only a single bit in every line, formatted as the character '0' or\n"
+   "    '1'. Use this for bitstream-diffing and merging.\n"
+   "\n"
+   "-B: Convert a text file produced by -b back into a normal binary file\n"
+   "    with an unstructured layout which is not line-oriented in any way.\n"
+   "\n"
+   "-x: Like -m, but add an ASCII dump of each character to the end of the\n"
+   "    line after its hex dump, provided it is not a control character.\n"
+   "    This is helpful if part of the binary data is actually ASCII text,\n"
+   "    and helps a human reader of the output file correlate the hex\n"
+   "    values with the ASCII characters.\n"
+   "\n"
+   "-X: Like -M, except that the ASCII dump is completely ignored. Only the\n"
+   "    hexadecimal values are read and converted back.\n"
+   "    \n"
+   "-h: Display this help.\n"
+   "\n"
+   "-V: Display only the copyright and version information.\n"
+   "\n"
+;
+
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -7,6 +91,14 @@
 #include <locale.h>
 #include <limits.h>
 
+#ifdef MALLOC_TRACE
+   #ifdef NDEBUG
+      #undef MALLOC_TRACE
+   #else
+      #include <mcheck.h>
+      #include <malloc.h>
+   #endif
+#endif
 
 #if defined __STDC_VERSION__ && __STDC_VERSION__ >= 199901
    #include <wctype.h>
@@ -20,10 +112,10 @@
    )
 #endif
 
-
 #define CMD_WORD ':'
 #define CMD_NEWLINE 'n'
 #define NL_RPLC ' '
+
 
 static void die(char const *msg, ...) {
    va_list args;
@@ -57,8 +149,12 @@ static void ck_putc(int c) {
    if (putchar(c) != c) stdout_error();
 }
 
-static void ck_write(char *buf, size_t bytes) {
+static void ck_write(char const *buf, size_t bytes) {
    if (fwrite(buf, sizeof(char), bytes, stdout) != bytes) stdout_error();
+}
+
+static void ck_puts(char const *s) {
+   if (fputs(s, stdout) < 0) stdout_error();
 }
 
 static void perror_exit(int e, char const *msg) {
@@ -82,8 +178,26 @@ static void die_with_wchar(char const *msg, wchar_t wc) {
    die(msg, chr);
 }
 
+static void appinfo(const char *text, const char *app) {
+   static char const marker[]= "$APPLICATION_NAME";
+   int const mlen= (int)(sizeof marker - sizeof(char));
+   char const *end;
+   while (end= strstr(text, marker)) {
+      ck_write(text, (size_t)(end - text));
+      ck_puts(app);
+      text= end + mlen;
+   }
+   if (text) ck_puts(text);
+}
+
 int main(int argc, char **argv) {
    int mode= 'w';
+   #ifdef MALLOC_TRACE
+       assert(mcheck_pedantic(0) == 0);
+       (void)mallopt (M_PERTURB, (int)0xaaaaaaaa);
+       mcheck_check_all();
+       mtrace();
+   #endif
    (void)setlocale(LC_ALL, "");
    if (argc > 1) {
       int optind, argpos;
@@ -113,10 +227,13 @@ int main(int argc, char **argv) {
          }
          if (!argpos) goto end_of_options;
          switch (c) {
-            case 'W': case 'C': case 'X': case 'B':
-            case 'w': case 'c': case 'x': case 'b':
+            case 'W': case 'C': case 'X': case 'M':
+            case 'w': case 'c': case 'x': case 'm':
                mode= c;
                break;
+            case 'h': appinfo(help, argv[0]);
+               /* Fall through. */
+            case 'V': appinfo(version_info, argv[0]); goto done;
             default: bad_option: die("Unsupported option -%c!", c);
          }
          ++argpos;
@@ -136,17 +253,17 @@ int main(int argc, char **argv) {
    (void)mbtowc(0, 0, 0);
    switch (mode) {
       int c;
-      case 'x': case 'b':
+      case 'x': case 'm':
          {
             register int c;
             while ((c= getchar()) != EOF) {
-               if (mode == 'b' || c == 0x20) ck_printf("%02X\n", c);
+               if (mode == 'm' || c == 0x20) ck_printf("%02X\n", c);
                else ck_printf("%02X %c\n", c, c > 0x20 && c < 0x7f ? c : '.');
             }
          }
          chk_stdin();
          break;
-      case 'X': case 'B':
+      case 'X': case 'M':
          {
             auto int c;
             int n;
