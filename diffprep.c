@@ -148,6 +148,9 @@ static char const help[]=
 #define CMD_WORD ':'
 #define CMD_NEWLINE 'n'
 #define NL_RPLC ' '
+#define ASCII_DUMP_SEP '|'
+#define DUMP_UNIT_SEP ' '
+#define GHOST_FACE '-'
 
 
 static void die(char const *msg, ...) {
@@ -251,12 +254,10 @@ static void appinfo(const char *text, const char *app) {
    if (text) ck_puts(text);
 }
 
-static void bitdump(int byte) {
-   int mask;
-   for (mask= 0x80; mask; mask>>= 1) {
-      ck_putc(byte & mask ? '1' : '0');
-      ck_putc('\n');
-   }
+static char *dump_buf= 0;
+
+static void cleanup() {
+   if (dump_buf) free(dump_buf);
 }
 
 int main(int argc, char **argv) {
@@ -272,6 +273,7 @@ int main(int argc, char **argv) {
    #if !CONFIG_NO_LOCALE
       (void)setlocale(LC_ALL, "");
    #endif
+   atexit(cleanup);
    if (argc > 1) {
       int optind= 1, argpos;
       char *arg;
@@ -301,8 +303,8 @@ int main(int argc, char **argv) {
          }
          if (!argpos) goto end_of_options;
          switch (c) {
-            case 'W': case 'C': case 'J': case 'X': case 'B':
-            case 'w': case 'c': case 'j': case 'x': case 'b':
+            case 'W': case 'C': case 'X': case 'B':
+            case 'w': case 'c': case 'x': case 'b':
                mode= c;
                break;
             case 'a': ascii_dump= 1; break;
@@ -328,7 +330,9 @@ int main(int argc, char **argv) {
                      }
                   }
                   units_per_line= (unsigned)optval;
-                  if (units_per_line != optval) goto invalid_argument;
+                  if (units_per_line != optval || units_per_line < 1) {
+                     goto invalid_argument;
+                  }
                }
                goto next_arg;
             case 'h': appinfo(help, argv[0]);
@@ -341,7 +345,7 @@ int main(int argc, char **argv) {
       end_of_options:
       if (optind < argc) {
          char const *fname= argv[optind++];
-         char const *fmode= strchr("xbm", mode) ? "rb" : "r";
+         char const *fmode= strchr("xb", mode) ? "rb" : "r";
          if (!freopen(fname, fmode, stdin)) {
             die("Could not open file \"%s\" in mode \"%s\"!", fname, fmode);
          }
@@ -352,18 +356,103 @@ int main(int argc, char **argv) {
     * sure. */
    (void)mbtowc(0, 0, 0);
    switch (mode) {
-      case 'j': case 'x': case 'b':
-         {
-            register int c;
-            while ((c= getchar()) != EOF) {
-               if (mode == 'b') bitdump(c);
-               else if (mode == 'x' || c == 0x20) ck_printf("%02X\n", c);
-               else ck_printf("%02X %c\n", c, c > 0x20 && c < 0x7f ? c : '.');
+      case 'x': case 'b':
+         if (ascii_dump && units_per_line > 1) {
+            if (
+               !(
+                  dump_buf= malloc(
+                        mode == 'b'
+                     ?  units_per_line + 8 - 1 >> 3
+                     :  units_per_line
+                  )
+               )
+            ) {
+               die("Memory allocation error!");
             }
          }
-         chk_stdin();
+         {
+            int ghost;
+            unsigned mask= 0x80, dump_bits, unit;
+            dump_bits= unit= 0;
+            for (ghost= 0;; ) {
+               int c;
+               if (!ghost) {
+                  /* Not at EOF yet. */
+                  if ((c= getchar()) == EOF) {
+                     chk_stdin();
+                     ghost= 1; /* Daddy, I can see DEAD BYTES! */
+                     continue;
+                  }
+               } else if (
+                  /* EOF has already been reached. Should we linger around? */
+                  !(
+                     unit || ascii_dump && (
+                        mode == 'x' ? dump_bits >= 8 : dump_bits
+                     )
+                  )
+               ) {
+                  /* We are done. Less than 8 trailing bits after the last
+                   * full byte will be ignored for mode "-x", because we
+                   * cannot ASCII-dump a partial byte! */
+                  break;
+               }
+               if (unit) ck_putc(DUMP_UNIT_SEP);
+               switch (mode) {
+                  case 'b':
+                     ck_putc(ghost ? GHOST_FACE : c & mask ? '1' : '0');
+                     if (ghost) break;
+                     if (ascii_dump) {
+                        unsigned i= dump_bits >> 3;
+                        if (!(dump_bits & 7)) dump_buf[i]= '\0';
+                        if (c & mask) {
+                           dump_buf[i]= (char)((unsigned)dump_buf[i] | mask);
+                        }
+                     }
+                     ++dump_bits;
+                     /* Not every CPU features a barrel shifter for:
+                      *
+                      * mask= mask << 8 - 1 | mask >> 1;
+                      *
+                      * This, on the other hand, works even for a 6502: ;-) */
+                     if (!(mask>>= 1)) mask= 0x80;
+                     break;
+                  default: assert(mode == 'x'); {
+                     if (ghost) {
+                        ck_putc(GHOST_FACE); ck_putc(GHOST_FACE);
+                        break;
+                     }
+                     ck_printf("%02X", c);
+                     if (ascii_dump) dump_buf[unit]= c;
+                     dump_bits+= 8;
+                  }
+               }
+               assert(unit < units_per_line);
+               if (++unit == units_per_line) {
+                  if (ascii_dump) {
+                     unsigned ndump;
+                     if (ndump= dump_bits >> 3) {
+                        unsigned i;
+                        ck_putc(ASCII_DUMP_SEP);
+                        for (i= 0; i < ndump; ++i) {
+                           ck_putc(
+                              (c= dump_buf[i]) > 0x20 && c < 0x7f ? c : '.'
+                           );
+                        }
+                        if (dump_bits & 8 - 1) {
+                           /* There are left-over unprocessed bits. */
+                           dump_buf[0]= dump_buf[ndump];
+                           dump_bits&= 8 - 1;
+                        }
+                     }
+                     assert(dump_bits < 8);
+                  }
+                  unit= 0;
+                  ck_putc('\n');
+               }
+            }
+         }
          break;
-      case 'J': case 'X':
+      case 'X':
          {
             auto unsigned int b;
             int n, c;
