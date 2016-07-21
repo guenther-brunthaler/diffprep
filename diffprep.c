@@ -1,5 +1,5 @@
 static char const version_info[]=
-   "$APPLICATION_NAME Version 2016.200.2\n"
+   "$APPLICATION_NAME Version 2016.203\n"
    "\n"
    "Copyright (c) 2016 Guenther Brunthaler. All rights reserved.\n"
    "\n"
@@ -189,10 +189,13 @@ static void ck_puts(char const *s) {
    if (fputs(s, stdout) < 0) stdout_error();
 }
 
-static void perror_exit(int e, char const *msg) {
-   errno= e;
-   perror(msg);
-   exit(EXIT_FAILURE);
+/* Errors which should never happen under normal circumstances. */
+static void internal_error(void) {
+   die("Internal error!");
+}
+
+static void ck_ungetc(int c) {
+   if (ungetc(c, stdin) != c) internal_error();
 }
 
 #if CONFIG_NO_LOCALE
@@ -258,6 +261,19 @@ static char *dump_buf= 0;
 
 static void cleanup() {
    if (dump_buf) free(dump_buf);
+}
+
+static int ignore_line_suffix(void) {
+   int c, ignore_mode= 0;
+   while ((c= getchar()) != '\n') {
+      switch (c) {
+         case EOF: chk_stdin(); return 0;
+         case ASCII_DUMP_SEP: ignore_mode= 1; /* Fall through. */
+         case GHOST_FACE: case DUMP_UNIT_SEP: break; /* Ignore it. */
+         default: if (!ignore_mode) die("Input format syntax error!");
+      }
+   }
+   return 1;
 }
 
 int main(int argc, char **argv) {
@@ -366,21 +382,17 @@ int main(int argc, char **argv) {
                      ?  (
                            /* The maximum number of whole characters which
                             * could be produced by the bits left of the text
-                            * dump area. */
-                           units_per_line / CHAR_BIT
+                            * dump area plus another byte for pre-caching the
+                            * next byte to be processed, even if no more than
+                            * the first bit of it has already been included
+                            * in <dump_bits> so far. In other words,
+                            * <dump_buf> needs to provide CHAR_BIT - 1 bits
+                            * more space than <dump_bits> will ever tell. */
+                           (units_per_line + CHAR_BIT - 1) / CHAR_BIT
                         )
                            /* Plus one character more, because it is possible
                             * that a partial byte from the line before became
                             * a whole byte which will also be dumped here. */
-                        +  1
-                           /* Plus another character more, because a dump
-                            * character will be added to the dump buffer as
-                            * soon as its byte is read, even if only the first
-                            * bit of that byte will be processed right now and
-                            * there is no chance for that byte to be included
-                            * within the visible dump output already.
-                            * Nevertheless, it needs storage space in the
-                            * buffer. */
                         +  1
                      :  units_per_line
                   )
@@ -489,46 +501,41 @@ int main(int argc, char **argv) {
       case 'X':
          {
             auto unsigned int b;
-            int n, c;
+            int n;
             errno= 0;
-            while ((n= scanf("%2x", &b)) == 1) {
-               if (putchar((int)b) == EOF) stdout_error();
-               while ((c= getchar()) != '\n') {
-                  if (c == EOF) {
+            for (;;) {
+               if ((n= scanf("%2x", &b)) == 1) {
+                  if (putchar((int)b) == EOF) stdout_error();
+               } else {
+                  if (n == EOF) {
                      chk_stdin();
-                     goto done;
+                     if (feof(stdin)) break;
                   }
+                  if (!ignore_line_suffix()) break;
                }
             }
-            if (n == EOF) {
-               int e= errno;
-               chk_stdin();
-               if (e) perror_exit(e, "Parsing error");
-            }
-            else bad_syntax: die("Input format syntax error!");
          }
          goto done;
       case 'B': {
          do {
             int mask, byte, c;
             for (byte= 0, mask= 0x80; mask; mask>>= 1) {
+               read_next:
                if ((c= getchar()) == EOF) {
                   chk_stdin();
+                  stop:
                   if (mask == 0x80) goto done;
                   die("Incomplete binary octet (8 bit byte) at end of input!");
                }
                switch (c) {
                   case '0': c= 0; break;
                   case '1': c= mask; break;
-                  default: goto bad_syntax;
+                  default:
+                     ck_ungetc(c); if (!ignore_line_suffix()) goto stop;
+                     /* Fall through. */
+                  case DUMP_UNIT_SEP: goto read_next;
                }
                byte|= c;
-               while ((c= getchar()) != '\n') {
-                  if (c == EOF) {
-                     chk_stdin();
-                     goto bad_syntax;
-                  }
-               }
             }
             if (putchar(byte) == EOF) stdout_error();
          } while (!feof(stdin));
