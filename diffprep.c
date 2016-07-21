@@ -363,7 +363,25 @@ int main(int argc, char **argv) {
                !(
                   dump_buf= malloc(
                         mode == 'b'
-                     ?  units_per_line + 8 - 1 >> 3
+                     ?  (
+                           /* The maximum number of whole characters which
+                            * could be produced by the bits left of the text
+                            * dump area. */
+                           units_per_line / CHAR_BIT
+                        )
+                           /* Plus one character more, because it is possible
+                            * that a partial byte from the line before became
+                            * a whole byte which will also be dumped here. */
+                        +  1
+                           /* Plus another character more, because a dump
+                            * character will be added to the dump buffer as
+                            * soon as its byte is read, even if only the first
+                            * bit of that byte will be processed right now and
+                            * there is no chance for that byte to be included
+                            * within the visible dump output already.
+                            * Nevertheless, it needs storage space in the
+                            * buffer. */
+                        +  1
                      :  units_per_line
                   )
                )
