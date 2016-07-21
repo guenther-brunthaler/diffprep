@@ -357,7 +357,8 @@ int main(int argc, char **argv) {
    (void)mbtowc(0, 0, 0);
    switch (mode) {
       case 'x': case 'b':
-         if (ascii_dump && units_per_line > 1) {
+         if (ascii_dump) {
+            assert(units_per_line >= 1);
             if (
                !(
                   dump_buf= malloc(
@@ -372,58 +373,70 @@ int main(int argc, char **argv) {
          }
          {
             int ghost;
-            unsigned mask= 0x80, dump_bits, unit;
-            dump_bits= unit= 0;
+            unsigned c_bits, dump_bits, unit;
+            c_bits= dump_bits= unit= 0;
             for (ghost= 0;; ) {
-               int c;
+               unsigned c;
+               #ifndef NDEBUG
+                  if (c_bits == 0) {
+                     /* Ensure that any masking omission will not go
+                      * undetected. This will also keep valgrind happy. */
+                     c= ~0u;
+                  }
+               #endif
                if (!ghost) {
                   /* Not at EOF yet. */
-                  if ((c= getchar()) == EOF) {
-                     chk_stdin();
-                     ghost= 1; /* Daddy, I can see DEAD BYTES! */
-                     continue;
+                  if (c_bits < CHAR_BIT) {
+                     int byte;
+                     if ((byte= getchar()) == EOF) {
+                        chk_stdin();
+                        ghost= 1; /* Daddy, I can see DEAD BYTES! */
+                        continue;
+                     }
+                     assert(CHAR_BIT * sizeof c >= CHAR_BIT + (CHAR_BIT - 1));
+                     c= c << CHAR_BIT | byte;
+                     c_bits+= CHAR_BIT;
                   }
-               } else if (
+               } else {
                   /* EOF has already been reached. Should we linger around? */
-                  !(
-                     unit || ascii_dump && (
-                        mode == 'x' ? dump_bits >= 8 : dump_bits
-                     )
-                  )
-               ) {
-                  /* We are done. Less than 8 trailing bits after the last
-                   * full byte will be ignored for mode "-x", because we
-                   * cannot ASCII-dump a partial byte! */
-                  break;
+                  if (unit == 0 && c_bits == 0 && dump_bits < CHAR_BIT) {
+                     /* We are done! Less than CHAR_BIT trailing bits after
+                      * the last full byte will be ignored for mode "-b",
+                      * because we cannot display a partial character. */
+                     goto done;
+                  }
                }
                if (unit) ck_putc(DUMP_UNIT_SEP);
-               switch (mode) {
-                  case 'b':
-                     ck_putc(ghost ? GHOST_FACE : c & mask ? '1' : '0');
-                     if (ghost) break;
-                     if (ascii_dump) {
-                        unsigned i= dump_bits >> 3;
-                        if (!(dump_bits & 7)) dump_buf[i]= '\0';
-                        if (c & mask) {
-                           dump_buf[i]= (char)((unsigned)dump_buf[i] | mask);
+               if (c_bits) {
+                  switch (mode) {
+                     case 'b':
+                        ck_putc(c & 1 << c_bits - 1 ? '1' : '0');
+                        if (ascii_dump) {
+                           if (dump_bits % CHAR_BIT == 0) {
+                              assert(c_bits >= CHAR_BIT);
+                              dump_buf[dump_bits / CHAR_BIT]=
+                                 (char)(c >> c_bits - CHAR_BIT)
+                              ;
+                           }
+                           ++dump_bits;
                         }
-                     }
-                     ++dump_bits;
-                     /* Not every CPU features a barrel shifter for:
-                      *
-                      * mask= mask << 8 - 1 | mask >> 1;
-                      *
-                      * This, on the other hand, works even for a 6502: ;-) */
-                     if (!(mask>>= 1)) mask= 0x80;
-                     break;
-                  default: assert(mode == 'x'); {
-                     if (ghost) {
-                        ck_putc(GHOST_FACE); ck_putc(GHOST_FACE);
+                        --c_bits;
                         break;
+                     default: assert(mode == 'x'); {
+                        assert(c_bits == CHAR_BIT);
+                        c&= (1 << CHAR_BIT) - 1;
+                        ck_printf("%02X", c);
+                        if (ascii_dump) {
+                           dump_buf[unit]= (char)c;
+                           dump_bits+= CHAR_BIT;
+                        }
+                        c_bits= 0;
                      }
-                     ck_printf("%02X", c);
-                     if (ascii_dump) dump_buf[unit]= c;
-                     dump_bits+= 8;
+                  }
+               } else {
+                  switch (mode) {
+                     case 'x': ck_putc(GHOST_FACE); /* Fall through. */
+                     default: assert(strchr("xb", mode)); ck_putc(GHOST_FACE);
                   }
                }
                assert(unit < units_per_line);
@@ -434,15 +447,18 @@ int main(int argc, char **argv) {
                         unsigned i;
                         ck_putc(ASCII_DUMP_SEP);
                         for (i= 0; i < ndump; ++i) {
+                           int c;
                            ck_putc(
-                              (c= dump_buf[i]) > 0x20 && c < 0x7f ? c : '.'
+                              (c= dump_buf[i]) >= 0x20 && c < 0x7f ? c : '.'
                            );
                         }
                         if (dump_bits & 8 - 1) {
-                           /* There are left-over unprocessed bits. */
+                           /* There are left-over unprocessed bits. Move them
+                            * to the beginning of the buffer. */
                            dump_buf[0]= dump_buf[ndump];
-                           dump_bits&= 8 - 1;
                         }
+                        assert(dump_bits >= ndump << 3);
+                        dump_bits-= ndump << 3;
                      }
                      assert(dump_bits < 8);
                   }
