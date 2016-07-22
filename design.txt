@@ -4,7 +4,20 @@ This project will therefore create a pre-/postprocessor, losslessly transforming
 
 We will also exploit fact that POSIX "diff" provides the "-b" option and POSIX "patch" provides the "-l" option, which make all sequences of one or more whitespaces (except newlines) at the end of a line compare equally as single word-separators.
 
-The "word" transformation format shall therefore keep the original whitespace between words at the end of the lines.
+The "word" transformation format shall therefore keep the original whitespace between words at the end of the lines, including all newline sequences until the start of the next word, if any.
+
+This happens by transforming the beforementioned whitespace into a different whitespace sequence only consisting of SPACE and HT characters, using the following transformation rules:
+
+LF    (\012) --> SPACE HT
+SPACE (\040) --> SPACE SPACE HT
+CR    (\015) --> SPACE SPACE SPACE HT
+HT    (\011) --> SPACE SPACE SPACE SPACE HT
+FF    (\014) --> SPACE SPACE SPACE SPACE SPACE HT
+VT    (\013) --> SPACE SPACE SPACE SPACE SPACE SPACE HT
+
+In addition, SPACE and HT characters which do not match any of the above patterns in the transformed output represent themselves, i. e. are to be interpreted literally.
+
+All generated output lines will be terminated with LF.
 
 The "character" transformation format shall do the same, so that those lines will in fact contain 2 or more characters rather than just one.
 

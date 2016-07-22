@@ -1,5 +1,5 @@
 static char const version_info[]=
-   "$APPLICATION_NAME Version 2016.203\n"
+   "$APPLICATION_NAME Version 2016.204\n"
    "\n"
    "Copyright (c) 2016 Guenther Brunthaler. All rights reserved.\n"
    "\n"
@@ -145,8 +145,6 @@ static char const help[]=
    )
 #endif
 
-#define CMD_WORD ':'
-#define CMD_NEWLINE 'n'
 #define NL_RPLC ' '
 #define ASCII_DUMP_SEP '|'
 #define DUMP_UNIT_SEP ' '
@@ -276,20 +274,10 @@ static int ignore_line_suffix(void) {
    return 1;
 }
 
-int main(int argc, char **argv) {
+static int actual_main(int argc, char **argv) {
    int mode= 'w';
    int ascii_dump= 0;
    unsigned units_per_line= 1;
-   #ifdef MALLOC_TRACE
-       assert(mcheck_pedantic(0) == 0);
-       (void)mallopt(M_PERTURB, (int)0xaaaaaaaa);
-       mcheck_check_all();
-       mtrace();
-   #endif
-   #if !CONFIG_NO_LOCALE
-      (void)setlocale(LC_ALL, "");
-   #endif
-   atexit(cleanup);
    if (argc > 1) {
       int optind= 1, argpos;
       char *arg;
@@ -543,11 +531,25 @@ int main(int argc, char **argv) {
       }
    }
    {
+      /* In -c and -w encodings, the following whitespace characters are
+       * transformed into a sequence of 1 to 6 consecutive SPACE characters,
+       * terminated by HT. The length of the sequence corresponds to the
+       * 1-based character position in the string below. As a special
+       * abbreviation rule, SPACE and HT in the transformed output which do
+       * not match the above pattern represent themselves literally. */
+      char const wse[]= {"\012\040\015\011\014\013"};
+      int const lit_SPACE= '\040'; /* SPACE of explanation above. */
+      int const lit_HT= '\011'; /* HT of explanation above. */
+      unsigned const SPACE_enc= (int)(strchr(wse, lit_SPACE) + 1 - wse);
+      unsigned const HT_enc= (int)(strchr(wse, lit_HT) + 1 - wse);
+      assert(SPACE_enc >= 1 && SPACE_enc <= sizeof wse - 1);
+      assert(HT_enc >= 1 && HT_enc <= sizeof wse - 1);
       size_t const mb_cur_max= MB_CUR_MAX;
       int state= 0;
       char c[MB_LEN_MAX];
       size_t nc0, nc= 0;
       int nnul, b, eof= 0;
+      unsigned nsp;
       wchar_t wc;
       {
          /* Determine the length of the MBCS-encoding of L'\0'. */
@@ -589,68 +591,151 @@ int main(int argc, char **argv) {
          switch (mode) {
             case 'w': case 'c':
                /* States:
-                * 0: Start of file.
-                * 1: Convert <NL_RPLC>s into newline charaters.
-                * 2: Outputting whitespace at the end of a cmd_word.
-                * 3: Outputing non-whitespace characters of a cmd_word. */
-               if (wc == L'\n') {
+                * 0: Not after a whitespace sequence.
+                * 1: After <nsp> lit_SPACE characters yet to be output.
+                * 2: After any other kind of whitespace character. */
+               if (wc == (wchar_t)lit_SPACE) {
                   switch (state) {
-                     case 2: case 3: ck_putc('\n'); /* Fall through. */
-                     case 0: ck_putc(CMD_NEWLINE); state= 1; break;
-                     default: assert(state == 1); ck_putc(NL_RPLC);
-                  }
-               } else if (iswspace(wc)) {
-                  switch (state) {
-                     case 1: ck_putc('\n'); /* Fall through. */
-                     case 0: ck_putc(CMD_WORD); /* Fall through. */
-                     case 3: state= 2; /* Fall through. */
-                     default: assert(state == 2); ck_write(c, nc0);
-                  }
-               } else {
-                  switch (state) {
-                     case 1: case 2: ck_putc('\n'); /* Fall through. */
-                     case 0: ck_putc(CMD_WORD); state= 3; /* Fall through. */
-                     default: {
-                        assert(state == 3); ck_write(c, nc0);
-                        if (mode == 'c') {
-                           ck_putc('\n');
-                           state= 0;
+                     case 0: case 2: nsp= 1; state= 1; break;
+                     default:
+                        assert(state == 1);
+                        if (nsp == sizeof wse - 1) {
+                           /* Our SPACE-counted encoding sequence cannot be
+                            * longer than this. Therefore we emit the first of
+                            * the spaces, because it cannot be part of an
+                            * encoding sequence any more. */
+                           ck_putc(lit_SPACE);
+                        } else {
+                           assert(nsp < sizeof wse - 1);
+                           ++nsp;
                         }
+                  }
+               } else if (wc == (wchar_t)lit_HT) {
+                  switch (state) {
+                     case 1:
+                        /* HT following SPACEs. That's unfortunate. We have to
+                         * encode all the SPACEs. But at least we can output
+                         * the HT literally following them. */
+                        assert(nsp >= 1 && nsp <= sizeof wse - 1);
+                        do {
+                           unsigned i;
+                           for (i= SPACE_enc; i--; ) ck_putc(lit_SPACE);
+                           ck_putc(lit_HT);
+                        } while (--nsp);
+                        /* Fall through. */
+                     case 0: state= 2;
+                  }
+                  /* Output the literal HT which is not preceded by a SPACE
+                   * (in the encoded output) and therefore needs no
+                   * encoding. */
+                  ck_putc(lit_HT);
+                  assert(state == 2);
+               } else if (iswspace(wc)) {
+                  unsigned enc;
+                  {
+                     char const *found;
+                     enc=
+                           wc < (wchar_t)128
+                           && (found= strchr(wse, (char)(unsigned char)wc))
+                        ?  enc= wse - found + 1
+                        :  0
+                     ;
+                  }
+                  assert(enc <= sizeof wse - 1);
+                  switch (state) {
+                     case 1:
+                        if (enc) {
+                           /* Whitespace which needs encoding following
+                            * SPACEs. That's unfortunate. We have to encode
+                            * all the SPACEs. */
+                           assert(nsp >= 1 && nsp <= sizeof wse - 1);
+                           do {
+                              unsigned i;
+                              for (i= SPACE_enc; i--; ) ck_putc(lit_SPACE);
+                              ck_putc(lit_HT);
+                           } while (--nsp);
+                           /* Encode <wc> itself. */
+                           do ck_putc(lit_SPACE); while (--enc);
+                           ck_putc(lit_HT);
+                           state= 2;
+                           break;
+                        } else {
+                           /* Whitespace which does not need encoding
+                            * following SPACEs. That's fine. We can output the
+                            * SPACEs literally. */
+                           assert(nsp >= 1 && nsp <= sizeof wse - 1);
+                           do ck_putc(lit_SPACE); while (--nsp);
+                        }
+                        /* Fall through. */
+                     case 0: state= 2; /* Fall through. */
+                     default: {
+                        assert(state == 2);
+                        ck_write(c, nc0); /* Output <wc> literally. */
                      }
                   }
+                  assert(state == 2);
+               } else {
+                  /* <wc> is a 'word' character. */
+                  switch (state) {
+                     case 0:
+                        if (mode == 'c') goto terminate;
+                        break;
+                     case 1:
+                        /* 'word'-character following SPACEs. That's fine. We
+                         * can output the SPACEs literally. */
+                        assert(nsp >= 1 && nsp <= sizeof wse - 1);
+                        do ck_putc(lit_SPACE); while (--nsp);
+                     /* Fall through. */
+                     case 2: {
+                        state= 0;
+                        terminate: ck_putc('\n');
+                     }
+                  }
+                  ck_write(c, nc0); /* Output <wc> literally. */
                }
                break;
             default: {
                assert(mode == 'W' || mode == 'C');
                /* States:
-                * 0: Initial state - parse command letter.
-                * 1: Convert <NL_RPLC>s into newline charaters.
-                * 2: Output characters before next '\n'. */
-               switch (state) {
-                  case 0:
-                     switch (wc) {
-                        case (wchar_t)CMD_WORD: state= 2; break;
-                        case (wchar_t)CMD_NEWLINE: state= 1; goto nlgen;
-                        default: {
-                           die_with_wchar("Invalid line command \"%s\"!", wc);
-                        }
+                * 0: Not in state 1.
+                * 1: After <nsp> lit_SPACE characters read but unprocessed. */
+               if (wc == (wchar_t)lit_SPACE) {
+                  if (state == 0) {
+                     nsp= 1;
+                     state= 1;
+                  } else {
+                     assert(state == 1);
+                     if (nsp == sizeof wse - 1) {
+                        /* Our SPACE-counted encoding sequence cannot be
+                         * longer than this. Therefore we emit the first of
+                         * the spaces, because it cannot be part of an
+                         * encoding sequence any more. */
+                        ck_putc(lit_SPACE);
+                     } else {
+                        assert(nsp < sizeof wse - 1);
+                        ++nsp;
                      }
-                     break;
-                  case 1:
-                     switch (wc) {
-                        case (wchar_t)NL_RPLC: nlgen: ck_putc('\n'); break;
-                        case L'\n': state= 0; break;
-                        default: {
-                           die_with_wchar(
-                              "Invalid newline substitute \"%s\"!", wc
-                           );
-                        }
-                     }
-                     break;
-                  case 2: {
-                     if (wc == L'\n') state= 0;
-                     else ck_write(c, nc0);
                   }
+                  assert(state == 1);
+               } else {
+                  /* Some other character than a SPACE. */
+                  if (state == 1) {
+                     state= 0;
+                     if (wc == (wchar_t)lit_HT) {
+                        /* It is an encoded whitespace character. Decode it. */
+                        assert(nsp >= 1 && nsp <= sizeof wse - 1);
+                        ck_putc(wse[nsp - 1]);
+                        break;
+                     }
+                     /* It is a literal whitespace character. Emit the delayed
+                      * spaces before checking the character any further. */
+                     assert(wc != L'\n');
+                     assert(nsp >= 1 && nsp <= sizeof wse - 1);
+                     do ck_putc(lit_SPACE); while (--nsp);
+                  }
+                  assert(state == 0);
+                  if (wc == '\n') break; /* Ignore literal newlines. */
+                  ck_write(c, nc0);
                }
             }
          }
@@ -660,13 +745,34 @@ int main(int argc, char **argv) {
       }
       switch (mode) {
          case 'w': case 'c': {
-            switch (state) {
-               case 1: case 2: case 3: ck_putc('\n');
+            if (state == 1) {
+               /* EOF following SPACEs. That's fine. We can output the
+                * SPACEs literally. */
+               assert(nsp >= 1 && nsp <= sizeof wse - 1);
+               do ck_putc(lit_SPACE); while (--nsp);
             }
+            ck_putc('\n'); /* Terminate the last output line. */
          }
       }
    }
    done:
    if (fflush(0)) die("Error writing to output stream!");
    return EXIT_SUCCESS;
+}
+
+int main(int argc, char **argv) {
+   /* This function is separate from actual_main() because the mcheck...() and
+    * mallopt() functions need to be called before any other library
+    * functions, including functions called in initializer expressions. */
+   #ifdef MALLOC_TRACE
+       assert(mcheck_pedantic(0) == 0);
+       (void)mallopt(M_PERTURB, (int)0xaaaaaaaa);
+       mcheck_check_all();
+       mtrace();
+   #endif
+   #if !CONFIG_NO_LOCALE
+      (void)setlocale(LC_ALL, "");
+   #endif
+   atexit(cleanup);
+   return actual_main(argc, argv);
 }
