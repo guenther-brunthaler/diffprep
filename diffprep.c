@@ -618,15 +618,20 @@ static int actual_main(int argc, char **argv) {
                } else if (iswspace(wc)) {
                   /* Whitespace which cannot use an abbreviated literal form
                    * if it needs encoding. */
-                  char const *found;
+                  union {
+                     unsigned enc;
+                     char const *found;
+                     ptrdiff_t offset;
+                  } u;
                   if (
-                        wc < (wchar_t)128 /* ASCII? */
-                     && (found= strchr(wse, (char)(unsigned char)wc))
-                  )
-                  {
+                     wc < (wchar_t)128 /* ASCII? */
+                     && (u.found= strchr(wse, (char)(unsigned char)wc))
+                  ) {
                      /* A whitespace character which needs to be encoded. */
-                     unsigned enc= wse - found + 1;
-                     assert(enc >= 1 && enc <= sizeof wse - 1);
+                     u.offset= u.found - wse;
+                     assert(u.offset >= 0 && (size_t)u.offset < sizeof wse);
+                     u.enc= (unsigned)u.offset + 1;
+                     assert(u.enc >= 1 && u.enc <= sizeof wse - 1);
                      switch (state) {
                         case 1:
                            /* Whitespace which needs encoding following
@@ -643,7 +648,7 @@ static int actual_main(int argc, char **argv) {
                         default: {
                            assert(state == 2);
                            /* Encode <wc> itself. */
-                           do ck_putc(lit_SPACE); while (--enc);
+                           do ck_putc(lit_SPACE); while (--u.enc);
                            ck_putc(lit_HT);
                            break;
                            ck_write(c, nc0); /* Output <wc> literally. */
