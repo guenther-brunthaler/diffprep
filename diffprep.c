@@ -1,5 +1,5 @@
 static char const version_info[]=
-   "$APPLICATION_NAME Version 2016.206\n"
+   "$APPLICATION_NAME Version 2016.206.1\n"
    "\n"
    "Copyright (c) 2016 Guenther Brunthaler. All rights reserved.\n"
    "\n"
@@ -113,6 +113,7 @@ static char const help[]=
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stddef.h>
 #include <string.h>
 #include <stdarg.h>
 #include <errno.h>
@@ -541,7 +542,9 @@ static int actual_main(int argc, char **argv) {
       int const lit_SPACE= '\040'; /* SPACE of explanation above. */
       int const lit_HT= '\011'; /* HT of explanation above. */
       unsigned const SPACE_enc= (int)(strchr(wse, lit_SPACE) + 1 - wse);
+      #ifndef NDEBUG
       unsigned const HT_enc= (int)(strchr(wse, lit_HT) + 1 - wse);
+      #endif
       size_t const mb_cur_max= MB_CUR_MAX;
       enum {st_initial, st_word, st_space, st_otherws} state= st_initial;
       char c[MB_LEN_MAX];
