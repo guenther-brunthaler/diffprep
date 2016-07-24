@@ -3,11 +3,13 @@
 set -e
 trap 'test $? = 0 || echo "$0 failed!" >& 2' 0
 
-mini=false
-while getopts m opt
+mode=large
+while getopts mts opt
 do
 	case $opt in
-		m) mini=true;;
+		s) mode=selftest;;
+		m) mode=mini;;
+		t) mode=term;;
 		*) false || exit
 	esac
 done
@@ -38,18 +40,25 @@ evil=`printf "$evil:"`
 evil=x$evil
 
 # $1: (possibly empty) sequence of ":"-termnated strings to permute.
+# $2: Prefix to prepend to every permutation.
+# $3: Suffix to add after every permutation.
 permute() {
 	local first prefix suffix head
 	test -z "$1" && return
 	first=${1%%:*}; prefix=; suffix=${1#"$first:"}
+	if test -z "$suffix"
+	then
+		printf %s "$2$first$3"
+		return
+	fi
 	# Emit permute($prefix) || $first || permute($suffix) where "||" means
 	# concatenation, then moving the first string of $suffix to the end of
 	# $prefix, until $suffix has become empty at the end of the loop.
 	while :
 	do
-		permute "$prefix"
-		printf %s "$first"
-		permute "$suffix"
+		permute "$prefix" "$2" "$3"
+		printf %s "$2$first$3"
+		permute "$suffix" "$2" "$3"
 		head=${suffix%%:*}
 		test x"$head" != x"$suffix" || break
 		suffix=${suffix#"$head:"}
@@ -57,23 +66,32 @@ permute() {
 	done
 }
 
-if $mini
-then
-	# Just print all "evil" strings in two variants prefixed by an index
-	# number: The string alone and the string prefixed by 7 spaces. This
-	# should trigger errors in the easy cases.
-	i=1
-	spc=`printf '%*s' $n '' | tr -c " " " "`:; spc=${evil%?}
-	while :
-	do
-		cur=${evil%%:*}
-		test x"$cur" != x"$evil" || break
-		evil=${evil#"$cur:"}
-		printf %s%s%s%s%s "p${i}:" "$cur" "s${i}:" "$spc" "$cur"
-		i=`expr $i + 1`
-	done
-else
-	# Print all possible permutations of the evil strings (and a single
-	# good one).
-	permute "$evil"
-fi
+nl=`printf '\n:'`; nl=${nl%?}
+case $mode in
+	selftest) permute 1:2:3:4: "$nl";;
+	mini)
+		# Just print all "evil" strings in two variants prefixed by an
+		# index number: The string alone and the string prefixed by 7
+		# spaces. This should trigger errors in the easy cases.
+		i=1
+		spc=`printf '%*s' $n '' | tr -c " " " "`:; spc=${evil%?}
+		while :
+		do
+			cur=${evil%%:*}
+			test x"$cur" != x"$evil" || break
+			evil=${evil#"$cur:"}
+			printf %s%s%s%s%s \
+				"p${i}:" "$cur" "s${i}:" "$spc" "$cur"
+			i=`expr $i + 1`
+		done
+		;;
+	term)
+		permute 'x: : :$:' "" "$nl"
+		;;
+	large)
+		# Print all possible permutations of the evil strings (and a
+		# single good one).
+		permute "$evil"
+		;;
+	*) false || exit
+esac

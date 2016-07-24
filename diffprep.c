@@ -169,6 +169,7 @@ static char const *const help[]= {
 #define ASCII_DUMP_SEP '|'
 #define DUMP_UNIT_SEP ' '
 #define GHOST_FACE '-'
+#define WS_OPT_TERMINATOR '$'
 
 
 static unsigned long read_pos;
@@ -298,8 +299,9 @@ static int ignore_line_suffix(void) {
 
 static int actual_main(int argc, char **argv) {
    int mode= 'w';
-   int ascii_dump= 0;
    unsigned units_per_line= 1;
+   int ascii_dump, terminate_ws;
+   ascii_dump= terminate_ws= 0;
    if (argc > 1) {
       int optind= 1, argpos;
       char *arg;
@@ -331,9 +333,11 @@ static int actual_main(int argc, char **argv) {
          switch (c) {
             case 'W': case 'C': case 'X': case 'B':
             case 'w': case 'c': case 'x': case 'b':
+            case 's':
                mode= c;
                break;
             case 'a': ascii_dump= 1; break;
+            case 't': terminate_ws= 1; break;
             case 'n':
                if (!arg[++argpos]) {
                   if (++optind == argc) {
@@ -568,7 +572,9 @@ static int actual_main(int argc, char **argv) {
       unsigned const HT_enc= (int)(strchr(wse, lit_HT) + 1 - wse);
       #endif
       size_t const mb_cur_max= MB_CUR_MAX;
-      enum {st_initial, st_word, st_space, st_otherws} state= st_initial;
+      enum {
+         st_initial, st_word, st_space, st_otherws, st_skip
+      } state= st_initial;
       char c[MB_LEN_MAX];
       size_t nc0, nc= 0;
       int nnul, b, eof= 0;
@@ -719,6 +725,18 @@ static int actual_main(int argc, char **argv) {
                         assert(nsp >= 1);
                         do ck_putc(lit_SPACE); while (--nsp);
                      case st_otherws: terminate:
+                        if (terminate_ws) {
+                           switch (state) {
+                              default:
+                                 assert( \
+                                    state == st_word || state == st_initial \
+                                 );
+                                 break;
+                              case st_space: case st_otherws: {
+                                 ck_putc(WS_OPT_TERMINATOR);
+                              }
+                           }
+                        }
                         ck_putc('\n');
                         /* Fall through. */
                      default: state= st_word;
@@ -726,13 +744,35 @@ static int actual_main(int argc, char **argv) {
                   ck_write(c, nc0); /* Output <wc> literally. */
                }
                break;
+            case 's':
+               /* States:
+                * st_initial: At the beginning of a line or within a word.
+                * st_space: After whitespace (other than newline).
+                * st_skip: Ignore rest of input line.  */
+               if (wc == L'\n') state= st_initial;
+               if (state != st_skip) {
+                  if (wc == (wchar_t)WS_OPT_TERMINATOR && state == st_space) {
+                     state= st_skip;
+                     break;
+                  }
+                  ck_write(c, nc0);
+                  state= iswspace(wc) && wc != L'\n' ? st_space : st_initial;
+               }
+               break;
             default: {
                assert(mode == 'W' || mode == 'C');
                /* States:
-                * st_initial: Not in state st_space.
-                * st_space: After <nsp> <lit_SPACE>s read but unprocessed. */
+                * st_initial: At the beginning of input or within a word.
+                * st_space: After <nsp> <lit_SPACE>s read but unprocessed.
+                * st_otherws: After whitespace but not in mode st_space.
+                * st_skip: Ignore rest of input line.  */
+               if (state == st_skip) {
+                  if (wc == L'\n') state= st_initial;
+                  break;
+               }
                if (wc == (wchar_t)lit_SPACE) {
-                  if (state == st_initial) {
+                  if (state != st_space) {
+                     assert(state == st_initial || state == st_otherws);
                      nsp= 1;
                      state= st_space;
                   } else {
@@ -752,21 +792,33 @@ static int actual_main(int argc, char **argv) {
                } else {
                   /* Some other character than a SPACE. */
                   if (state == st_space) {
-                     state= st_initial;
                      if (wc == (wchar_t)lit_HT) {
                         /* It is an encoded whitespace character. Decode it. */
                         assert(nsp >= 1 && nsp <= sizeof wse - 1);
                         ck_putc(wse[nsp - 1]);
+                        state= st_otherws;
                         break;
                      }
-                     /* It is a literal whitespace character. Emit the delayed
-                      * spaces before checking the character any further. */
+                     /* It is some literal character. Emit the delayed spaces
+                      * before checking the character any further. */
                      assert(nsp >= 1 && nsp <= sizeof wse - 1);
                      do ck_putc(lit_SPACE); while (--nsp);
+                     state= st_otherws;
                   }
-                  assert(state == st_initial);
-                  if (wc == '\n') break; /* Ignore literal newlines. */
+                  assert(state == st_initial || state == st_otherws);
+                  if (wc == L'\n') {
+                     state= st_initial;
+                     break;
+                  }
+                  if (
+                     wc == (wchar_t)WS_OPT_TERMINATOR && state != st_initial
+                  ) {
+                     assert(state == st_otherws);
+                     state= st_skip;
+                     break;
+                  }
                   ck_write(c, nc0);
+                  state= iswspace(wc) ? st_otherws : st_initial;
                }
             }
          }
@@ -781,6 +833,9 @@ static int actual_main(int argc, char **argv) {
                 * literally. */
                assert(nsp >= 1);
                do ck_putc(lit_SPACE); while (--nsp);
+            }
+            if (terminate_ws && (state == st_otherws || state == st_space)) {
+               ck_putc(WS_OPT_TERMINATOR);
             }
             ck_putc('\n'); /* Terminate the last output line. */
          }

@@ -54,7 +54,7 @@ run() {
 # option character for converting back the transformed test case into the
 # original. The remaining characters are the (clustered) option characters for
 # transforming the original.
-tests='bB xX baB xaX wW cC'
+tests='bB xX baB xaX wW cC wtW ctC'
 single_test='cC'
 tests_overridden=false
 verbose=true
