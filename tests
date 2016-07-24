@@ -8,7 +8,8 @@ cleanup() {
 	test $rc = 0 || echo "$0 failed!" >& 2
 }
 TD=
-trap cleanup 0 INT
+trap cleanup 0
+trap 'exit $?' INT
 
 redir_from() {
 	local source; source=$1; shift
