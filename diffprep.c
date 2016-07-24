@@ -597,16 +597,8 @@ static int actual_main(int argc, char **argv) {
                if (wc == (wchar_t)lit_SPACE) {
                   switch (state) {
                      case st_space:
-                        if (nsp == sizeof wse - 1) {
-                           /* Our SPACE-counted encoding sequence cannot be
-                            * longer than this. Therefore we emit the first of
-                            * the spaces, because it cannot be part of an
-                            * encoding sequence any more. */
-                           ck_putc(lit_SPACE);
-                        } else {
-                           assert(nsp < sizeof wse - 1);
-                           ++nsp;
-                        }
+                        assert(nsp + 1 > nsp); /* No overflow. */
+                        ++nsp;
                         break;
                      default: nsp= 1; state= st_space;
                   }
@@ -617,7 +609,7 @@ static int actual_main(int argc, char **argv) {
                         /* HT following SPACEs. That's unfortunate. We have to
                          * encode all the SPACEs. But at least we can output
                          * the HT literally following them. */
-                        assert(nsp >= 1 && nsp <= sizeof wse - 1);
+                        assert(nsp >= 1);
                         do {
                            unsigned i;
                            for (i= SPACE_enc; i--; ) ck_putc(lit_SPACE);
@@ -653,7 +645,7 @@ static int actual_main(int argc, char **argv) {
                            /* Whitespace which needs encoding following
                             * SPACEs. That's unfortunate. We have to encode
                             * all the SPACEs. */
-                           assert(nsp >= 1 && nsp <= sizeof wse - 1);
+                           assert(nsp >= 1);
                            do {
                               unsigned i;
                               for (i= SPACE_enc; i--; ) ck_putc(lit_SPACE);
@@ -678,7 +670,7 @@ static int actual_main(int argc, char **argv) {
                            /* Whitespace which does not need encoding
                             * following SPACEs. That's fine. We can output the
                             * SPACEs literally. */
-                           assert(nsp >= 1 && nsp <= sizeof wse - 1);
+                           assert(nsp >= 1);
                            do ck_putc(lit_SPACE); while (--nsp);
                         case st_initial: case st_word:
                            state= st_otherws;
@@ -699,7 +691,7 @@ static int actual_main(int argc, char **argv) {
                      case st_space:
                         /* 'word'-character following SPACEs. That's fine. We
                          * can output the SPACEs literally. */
-                        assert(nsp >= 1 && nsp <= sizeof wse - 1);
+                        assert(nsp >= 1);
                         do ck_putc(lit_SPACE); while (--nsp);
                      case st_otherws: terminate:
                         ck_putc('\n');
@@ -762,7 +754,7 @@ static int actual_main(int argc, char **argv) {
             if (state == st_space) {
                /* EOF following SPACEs. That's fine. We can output the SPACEs
                 * literally. */
-               assert(nsp >= 1 && nsp <= sizeof wse - 1);
+               assert(nsp >= 1);
                do ck_putc(lit_SPACE); while (--nsp);
             }
             ck_putc('\n'); /* Terminate the last output line. */
