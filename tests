@@ -1,17 +1,33 @@
 #! /bin/sh
 set -e
 target=diffprep
+evil_generator=./gen_evil
+
 cleanup() {
 	local rc; rc=$?
 	test -n "$TD" && rm -r -- "$TD"
 	test $rc = 0 || echo "$0 failed!" >& 2
 }
 TD=
-trap cleanup 0
+trap cleanup 0 INT
 
-redir_output() {
+redir_from() {
+	local source; source=$1; shift
+	"$@" < "$source"
+}
+
+redir_to() {
 	local target; target=$1; shift
 	"$@" > "$target"
+}
+
+launch() {
+	local launched_cmd launched_pid_varname
+	launched_pid_varname=$1; shift
+	launched_cmd=$*
+	eval $launched_pid_varname'_cmd=$launched_cmd'
+	"$@" &
+	eval $launched_pid_varname'=$!'
 }
 
 run() {
@@ -19,9 +35,9 @@ run() {
 	{
 		echo "There was a problem executing the following command:"
 		echo ">>>$*<<<"
-		echo "Examine, then 'exit' to quit."
+		$examine && echo "Examine, then 'exit' to quit."
 	} >& 2
-	xterm -e "$SHELL" -l
+	$examine && xterm -e "$SHELL" -l
 	false || exit
 }
 
@@ -31,22 +47,98 @@ run() {
 # transforming the original.
 tests='bB xX baB xaX wW cC'
 verbose=true
-while getopts qt: opt
+include_evil=false
+while getopts qt:e opt
 do
 	case $opt in
 		q) verbose=false;;
 		t) tests=$OPTARG;;
+		e) include_evil=true;;
 		*) false || exit
 	esac
 done
 shift `expr $OPTIND - 1 || :`
 test -n "$SHELL"
+examine=false
 run test -n "$tests"
-run test $# != 0
 run make -s -- "$target"
 run test -f "$target"
 run test -x "$target"
 TD=`mktemp -d -- "${TMPDIR:-/tmp}/${0##*/}.XXXXXXXXXX"`
+
+if $include_evil
+then
+	fifos='orig from into back cmp'
+	test -x "$evil_generator"
+	waits=
+	for f in $fifos
+	do
+		mkfifo -- "$TD"/$f
+		waits="$waits ${f}_pid"
+	done
+	$verbose && echo "Evil test case:" >& 2
+	for modes in $tests
+	do
+		run test ${#modes} -ge 2
+		into=${modes%?}
+		back=${modes#"$into"}
+		$verbose && printf %s "-$into" >& 2
+		run launch from_pid redir_to "$TD"/from "$evil_generator"
+		run launch into_pid redir_to "$TD"/into redir_from "$TD"/from \
+			./"$target" -$into
+		$verbose && printf %s " and -$back" >& 2
+		run launch back_pid redir_to "$TD"/back redir_from "$TD"/into \
+			./"$target" -$back
+		run launch orig_pid redir_to "$TD"/orig "$evil_generator"
+		run launch cmp_pid cmp -s -- "$TD"/back "$TD"/orig
+		worst_rc=0
+		for f in $fifos
+		do
+			if eval "wait \$${f}_pid"
+			then
+				:
+			else
+				rc=$?
+				if test $rc -gt 128
+				then
+					if rcd=`kill -l $rc 2> /dev/null`
+					then
+						if test "$rcd" = PIPE
+						then
+							rc=0
+						else
+							rcd="signal $rcd"
+						fi
+					fi
+				else
+					rcd=
+				fi
+				if test $rc != 0
+				then
+					test -z "$rcd" && rcd="return code $rc"
+					eval "cmd=\$${f}_pid_cmd"
+					echo "Command >>>$cmd<<< failed" \
+						"with $rcd!" >& 2
+					test $rc -gt $worst_rc && worst_rc=$rc
+				fi
+			fi
+		done
+		if (exit $worst_rc)
+		then
+			echo " passed." >& 2
+		else
+			echo " FAILED!" >& 2
+			exit $worst_rc
+		fi
+	done
+	for f in $fifos
+	do
+		unset ${f}_pid
+		rm -- "$TD"/$f
+	done
+fi
+run test $# != 0
+examine=true
 for f
 do
 	test -f "$f"
@@ -61,15 +153,16 @@ do
 		into=${modes%?}
 		back=${modes#"$into"}
 		$verbose && printf %s "-$into" >& 2
-		run ./"$target" -$into "$TD"/from > "$TD"/into
+		run redir_to "$TD"/into ./"$target" -$into "$TD"/from
 		$verbose && printf %s " and -$back" >& 2
-		run redir_output "$TD"/back ./"$target" -$back < "$TD"/into
-		set cmp -s -- ""$TD"/back" "$f"
+		run redir_from "$TD"/into redir_to "$TD"/back \
+			./"$target" -$back
+		set cmp -s -- "$TD"/back "$f"
 		if "$@"
 		then
-			echo " passed."
+			echo " passed." >& 2
 		else
-			echo " FAILED!"
+			echo " FAILED!" >& 2
 			run "$@"; false || exit
 		fi
 	done

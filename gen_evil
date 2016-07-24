@@ -1,0 +1,51 @@
+#! /bin/sh
+# Generate a mean test file for -c and -w modes.
+set -e
+trap 'test $? = 0 || echo "$0 failed!" >& 2' 0
+
+# Retrieve list of characters which needs encoding from the source file.
+evil=`grep -F 'wse[]= {"' diffprep.c`
+evil=${evil#*'"'}
+evil=${evil%'"'*}
+test -n "$evil"
+
+# Convert the characters into strings prefixed by a colon.
+evil=`printf '%s\n' "$evil" | sed 's/\\\\/:&/g'`
+
+# Add a couple of strings consisting of a different number of SPACE characters.
+n=5
+while test $n -le 8
+do
+	evil=$evil:`printf '%*s' $n '' | tr -c " " " "`: evil=${evil%?}
+	n=`expr $n + 1`
+done
+
+# Expand octal escape sequences and convert into strings terminated by a colon
+# where the first string is empty.
+evil=`printf "$evil:"`
+
+# Replace leading empty string with one single not-evil string.
+evil=x$evil
+
+# $1: (possibly empty) sequence of ":"-termnated strings to permute.
+permute() {
+	local first prefix suffix head
+	test -z "$1" && return
+	first=${1%%:*}; prefix=; suffix=${1#"$first:"}
+	# Emit permute($prefix) || $first || permute($suffix) where "||" means
+	# concatenation, then moving the first string of $suffix to the end of
+	# $prefix, until $suffix has become empty at the end of the loop.
+	while :
+	do
+		permute "$prefix"
+		printf %s "$first"
+		permute "$suffix"
+		head=${suffix%%:*}
+		test x"$head" != x"$suffix" || break
+		suffix=${suffix#"$head:"}
+		prefix=$prefix$head:
+	done
+}
+
+# Print all possible permutations of the evil strings (and a single good one).
+permute "$evil"
