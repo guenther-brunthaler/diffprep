@@ -151,16 +151,21 @@ static char const help[]=
 #define GHOST_FACE '-'
 
 
+static unsigned long read_pos;
+
 static void die(char const *msg, ...) {
    va_list args;
    va_start(args, msg);
    (void)vfprintf(stderr, msg, args);
    va_end(args);
    (void)fputc('\n', stderr);
+   if (read_pos) {
+      (void)fprintf(stderr, "Last read position was %lu.\n", read_pos);
+   }
    exit(EXIT_FAILURE);
 }
 
-static void chk_stdin(void) {
+static void ck_stdin(void) {
    if (ferror(stdin)) die("Error reading from standard input stream!");
 }
 
@@ -173,6 +178,17 @@ static void ck_printf(char const *format, ...) {
    va_start(args, format);
    if (vprintf(format, args) < 0) stdout_error();
    va_end(args);
+}
+
+static int ck_getc(void) {
+   int r;
+   if ((r= getchar()) == EOF) {
+      ck_stdin();
+   } else {
+      assert(r >= 0);
+      ++read_pos;
+   }
+   return r;
 }
 
 static void ck_putc(int c) {
@@ -194,6 +210,7 @@ static void internal_error(void) {
 
 static void ck_ungetc(int c) {
    if (ungetc(c, stdin) != c) internal_error();
+   --read_pos;
 }
 
 #if CONFIG_NO_LOCALE
@@ -248,9 +265,9 @@ static void cleanup() {
 
 static int ignore_line_suffix(void) {
    int c, ignore_mode= 0;
-   while ((c= getchar()) != '\n') {
+   while ((c= ck_getc()) != '\n') {
       switch (c) {
-         case EOF: chk_stdin(); return 0;
+         case EOF: return 0;
          case ASCII_DUMP_SEP: ignore_mode= 1; /* Fall through. */
          case GHOST_FACE: case DUMP_UNIT_SEP: break; /* Ignore it. */
          default: if (!ignore_mode) die("Input format syntax error!");
@@ -391,8 +408,7 @@ static int actual_main(int argc, char **argv) {
                   /* Not at EOF yet. */
                   if (c_bits < CHAR_BIT) {
                      int byte;
-                     if ((byte= getchar()) == EOF) {
-                        chk_stdin();
+                     if ((byte= ck_getc()) == EOF) {
                         ghost= 1; /* Daddy, I can see DEAD BYTES! */
                         continue;
                      }
@@ -481,7 +497,7 @@ static int actual_main(int argc, char **argv) {
                   if (putchar((int)b) == EOF) stdout_error();
                } else {
                   if (n == EOF) {
-                     chk_stdin();
+                     ck_stdin();
                      if (feof(stdin)) break;
                   }
                   if (!ignore_line_suffix()) break;
@@ -494,8 +510,7 @@ static int actual_main(int argc, char **argv) {
             int mask, byte, c;
             for (byte= 0, mask= 0x80; mask; mask>>= 1) {
                read_next:
-               if ((c= getchar()) == EOF) {
-                  chk_stdin();
+               if ((c= ck_getc()) == EOF) {
                   stop:
                   if (mask == 0x80) goto done;
                   die("Incomplete binary octet (8 bit byte) at end of input!");
@@ -528,7 +543,7 @@ static int actual_main(int argc, char **argv) {
       unsigned const SPACE_enc= (int)(strchr(wse, lit_SPACE) + 1 - wse);
       unsigned const HT_enc= (int)(strchr(wse, lit_HT) + 1 - wse);
       size_t const mb_cur_max= MB_CUR_MAX;
-      int state= 0;
+      enum {st_initial, st_word, st_space, st_otherws} state= st_initial;
       char c[MB_LEN_MAX];
       size_t nc0, nc= 0;
       int nnul, b, eof= 0;
@@ -545,8 +560,7 @@ static int actual_main(int argc, char **argv) {
          /* Read as much bytes into c[] as possible, but not more than the
           * longest possible MBCS-sequence. */
          while (!eof && nc < mb_cur_max) {
-            if ((b= getchar()) == EOF) {
-               chk_stdin();
+            if ((b= ck_getc()) == EOF) {
                eof= 1;
                break;
             }
@@ -576,14 +590,13 @@ static int actual_main(int argc, char **argv) {
          switch (mode) {
             case 'w': case 'c':
                /* States:
-                * 0: Not after a whitespace sequence.
-                * 1: After <nsp> lit_SPACE characters yet to be output.
-                * 2: After any other kind of whitespace character. */
+                * st_initial: Initial state. No byte read yet.
+                * st_word: Not after a whitespace sequence.
+                * st_space: After <nsp> lit_SPACE characters yet to be output.
+                * st_otherws: After any other kind of whitespace character. */
                if (wc == (wchar_t)lit_SPACE) {
                   switch (state) {
-                     case 0: case 2: nsp= 1; state= 1; break;
-                     default:
-                        assert(state == 1);
+                     case st_space:
                         if (nsp == sizeof wse - 1) {
                            /* Our SPACE-counted encoding sequence cannot be
                             * longer than this. Therefore we emit the first of
@@ -594,10 +607,13 @@ static int actual_main(int argc, char **argv) {
                            assert(nsp < sizeof wse - 1);
                            ++nsp;
                         }
+                        break;
+                     default: nsp= 1; state= st_space;
                   }
                } else if (wc == (wchar_t)lit_HT) {
                   switch (state) {
-                     case 1:
+                     default: assert(state == st_otherws); break;
+                     case st_space:
                         /* HT following SPACEs. That's unfortunate. We have to
                          * encode all the SPACEs. But at least we can output
                          * the HT literally following them. */
@@ -608,13 +624,13 @@ static int actual_main(int argc, char **argv) {
                            ck_putc(lit_HT);
                         } while (--nsp);
                         /* Fall through. */
-                     case 0: state= 2;
+                     case st_initial: case st_word: state= st_otherws;
                   }
                   /* Output the literal HT which is not preceded by a SPACE
                    * (in the encoded output) and therefore needs no
                    * encoding. */
                   ck_putc(lit_HT);
-                  assert(state == 2);
+                  assert(state == st_otherws);
                } else if (iswspace(wc)) {
                   /* Whitespace which cannot use an abbreviated literal form
                    * if it needs encoding. */
@@ -633,7 +649,7 @@ static int actual_main(int argc, char **argv) {
                      u.enc= (unsigned)u.offset + 1;
                      assert(u.enc >= 1 && u.enc <= sizeof wse - 1);
                      switch (state) {
-                        case 1:
+                        case st_space:
                            /* Whitespace which needs encoding following
                             * SPACEs. That's unfortunate. We have to encode
                             * all the SPACEs. */
@@ -644,48 +660,51 @@ static int actual_main(int argc, char **argv) {
                               ck_putc(lit_HT);
                            } while (--nsp);
                            /* Fall through. */
-                        case 0: state= 2; /* Fall through. */
+                        case st_initial: case st_word:
+                           state= st_otherws;
+                           /* Fall through. */
                         default: {
-                           assert(state == 2);
+                           assert(state == st_otherws);
                            /* Encode <wc> itself. */
                            do ck_putc(lit_SPACE); while (--u.enc);
                            ck_putc(lit_HT);
-                           break;
-                           ck_write(c, nc0); /* Output <wc> literally. */
                         }
                      }
                   } else {
                      /* Some other whitespace character which needs no
                       * encoding. */
                      switch (state) {
-                        case 1:
+                        case st_space:
                            /* Whitespace which does not need encoding
                             * following SPACEs. That's fine. We can output the
                             * SPACEs literally. */
                            assert(nsp >= 1 && nsp <= sizeof wse - 1);
                            do ck_putc(lit_SPACE); while (--nsp);
-                        case 0: state= 2; /* Fall through. */
+                        case st_initial: case st_word:
+                           state= st_otherws;
+                           /* Fall through. */
                         default: {
-                           assert(state == 2);
+                           assert(state == st_otherws);
                            ck_write(c, nc0); /* Output <wc> literally. */
                         }
                      }
                   }
-                  assert(state == 2);
+                  assert(state == st_otherws);
                } else {
                   /* <wc> is a 'word' character. */
                   switch (state) {
-                     case 0:
+                     default: assert(state == st_initial); break;
+                     case st_word:
                         if (mode == 'c') goto terminate;
                         break;
-                     case 1:
+                     case st_space:
                         /* 'word'-character following SPACEs. That's fine. We
                          * can output the SPACEs literally. */
                         assert(nsp >= 1 && nsp <= sizeof wse - 1);
                         do ck_putc(lit_SPACE); while (--nsp);
                      /* Fall through. */
-                     case 2: {
-                        state= 0;
+                     case st_otherws: {
+                        state= st_word;
                         terminate: ck_putc('\n');
                      }
                   }
@@ -695,14 +714,14 @@ static int actual_main(int argc, char **argv) {
             default: {
                assert(mode == 'W' || mode == 'C');
                /* States:
-                * 0: Not in state 1.
-                * 1: After <nsp> lit_SPACE characters read but unprocessed. */
+                * st_initial: Not in state st_space.
+                * st_space: After <nsp> <lit_SPACE>s read but unprocessed. */
                if (wc == (wchar_t)lit_SPACE) {
-                  if (state == 0) {
+                  if (state == st_initial) {
                      nsp= 1;
-                     state= 1;
+                     state= st_space;
                   } else {
-                     assert(state == 1);
+                     assert(state == st_space);
                      if (nsp == sizeof wse - 1) {
                         /* Our SPACE-counted encoding sequence cannot be
                          * longer than this. Therefore we emit the first of
@@ -714,11 +733,11 @@ static int actual_main(int argc, char **argv) {
                         ++nsp;
                      }
                   }
-                  assert(state == 1);
+                  assert(state == st_space);
                } else {
                   /* Some other character than a SPACE. */
-                  if (state == 1) {
-                     state= 0;
+                  if (state == st_space) {
+                     state= st_initial;
                      if (wc == (wchar_t)lit_HT) {
                         /* It is an encoded whitespace character. Decode it. */
                         assert(nsp >= 1 && nsp <= sizeof wse - 1);
@@ -730,7 +749,7 @@ static int actual_main(int argc, char **argv) {
                      assert(nsp >= 1 && nsp <= sizeof wse - 1);
                      do ck_putc(lit_SPACE); while (--nsp);
                   }
-                  assert(state == 0);
+                  assert(state == st_initial);
                   if (wc == '\n') break; /* Ignore literal newlines. */
                   ck_write(c, nc0);
                }
@@ -742,9 +761,9 @@ static int actual_main(int argc, char **argv) {
       }
       switch (mode) {
          case 'w': case 'c': {
-            if (state == 1) {
-               /* EOF following SPACEs. That's fine. We can output the
-                * SPACEs literally. */
+            if (state == st_space) {
+               /* EOF following SPACEs. That's fine. We can output the SPACEs
+                * literally. */
                assert(nsp >= 1 && nsp <= sizeof wse - 1);
                do ck_putc(lit_SPACE); while (--nsp);
             }

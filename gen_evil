@@ -3,6 +3,16 @@
 set -e
 trap 'test $? = 0 || echo "$0 failed!" >& 2' 0
 
+mini=false
+while getopts m opt
+do
+	case $opt in
+		m) mini=true;;
+		*) false || exit
+	esac
+done
+shift `expr $OPTIND - 1 || :`
+
 # Retrieve list of characters which needs encoding from the source file.
 evil=`grep -F 'wse[]= {"' diffprep.c`
 evil=${evil#*'"'}
@@ -16,7 +26,7 @@ evil=`printf '%s\n' "$evil" | sed 's/\\\\/:&/g'`
 n=5
 while test $n -le 8
 do
-	evil=$evil:`printf '%*s' $n '' | tr -c " " " "`: evil=${evil%?}
+	evil=$evil:`printf '%*s' $n '' | tr -c " " " "`:; evil=${evil%?}
 	n=`expr $n + 1`
 done
 
@@ -47,5 +57,23 @@ permute() {
 	done
 }
 
-# Print all possible permutations of the evil strings (and a single good one).
-permute "$evil"
+if $mini
+then
+	# Just print all "evil" strings in two variants prefixed by an index
+	# number: The string alone and the string prefixed by 7 spaces. This
+	# should trigger errors in the easy cases.
+	i=1
+	spc=`printf '%*s' $n '' | tr -c " " " "`:; spc=${evil%?}
+	while :
+	do
+		cur=${evil%%:*}
+		test x"$cur" != x"$evil" || break
+		evil=${evil#"$cur:"}
+		printf %s%s%s%s%s "p${i}:" "$cur" "s${i}:" "$spc" "$cur"
+		i=`expr $i + 1`
+	done
+else
+	# Print all possible permutations of the evil strings (and a single
+	# good one).
+	permute "$evil"
+fi

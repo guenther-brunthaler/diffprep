@@ -42,37 +42,40 @@ End.$
 which is looks like
 
 -----
-   H   i   ,  sp   w   o   r   l   d   !  nl  nl   T   h   i   s
-  sp   i   s  sp   a  sp   t   e   s   t   .  nl  nl   T   h   e
-   r   e  sp   a   r   e  sp   3  sp   e   m   p   t   y  sp   l
-   i   n   e   s  sp   a   f   t   e   r  sp   t   h   i   s  sp
-   o   n   e   :  nl  nl  nl  nl   E   n   d   .  nl
+0000000   H   i   ,  sp   w   o   r   l   d   !  nl  nl   T   h   i   s
+0000020  sp   i   s  sp   a  sp   t   e   s   t   .  nl  nl   T   h   e
+0000040   r   e  sp   a   r   e  sp   3  sp   e   m   p   t   y  sp   l
+0000060   i   n   e   s  sp   a   f   t   e   r  sp   t   h   i   s  sp
+0000100   o   n   e   :  nl  nl  nl  nl   E   n   d   .  nl
+0000115
 -----
 
-when dumped with "od -An -ta" will be transformed into the following output (also dumped using "od" in the same way) when operating in "word" splitting mode:
+when dumped with "od -ta" will be transformed into the following output (also dumped using "od" in the same way) when operating in "word" splitting mode:
 
 -----
-   H   i   ,  sp  nl   w   o   r   l   d   !  sp  ht  sp  ht  nl
-   T   h   i   s  sp  nl   i   s  sp  nl   a  sp  nl   t   e   s
-   t   .  sp  ht  sp  ht  nl   T   h   e   r   e  sp  nl   a   r
-   e  sp  nl   3  sp  nl   e   m   p   t   y  sp  nl   l   i   n
-   e   s  sp  nl   a   f   t   e   r  sp  nl   t   h   i   s  sp
-  nl   o   n   e   :  sp  ht  sp  ht  sp  ht  sp  ht  nl   E   n
-   d   .  sp  ht  nl
+0000000   H   i   ,  sp  nl   w   o   r   l   d   !  sp  ht  sp  ht  nl
+0000020   T   h   i   s  sp  nl   i   s  sp  nl   a  sp  nl   t   e   s
+0000040   t   .  sp  ht  sp  ht  nl   T   h   e   r   e  sp  nl   a   r
+0000060   e  sp  nl   3  sp  nl   e   m   p   t   y  sp  nl   l   i   n
+0000100   e   s  sp  nl   a   f   t   e   r  sp  nl   t   h   i   s  sp
+0000120  nl   o   n   e   :  sp  ht  sp  ht  sp  ht  sp  ht  nl   E   n
+0000140   d   .  sp  ht  nl
+0000145
 -----
 
 In character-split mode, the output would instead be:
 
 -----
-  nl   H  nl   i  nl   ,  sp  nl   w  nl   o  nl   r  nl   l  nl
-   d  nl   !  sp  ht  sp  ht  nl   T  nl   h  nl   i  nl   s  sp
-  nl   i  nl   s  sp  nl   a  sp  nl   t  nl   e  nl   s  nl   t
-  nl   .  sp  ht  sp  ht  nl   T  nl   h  nl   e  nl   r  nl   e
-  sp  nl   a  nl   r  nl   e  sp  nl   3  sp  nl   e  nl   m  nl
-   p  nl   t  nl   y  sp  nl   l  nl   i  nl   n  nl   e  nl   s
-  sp  nl   a  nl   f  nl   t  nl   e  nl   r  sp  nl   t  nl   h
-  nl   i  nl   s  sp  nl   o  nl   n  nl   e  nl   :  sp  ht  sp
-  ht  sp  ht  sp  ht  nl   E  nl   n  nl   d  nl   .  sp  ht  nl
+0000000   H   i   ,  sp  nl   w  nl   o  nl   r  nl   l  nl   d  nl   !
+0000020  sp  ht  sp  ht  nl   T  nl   h  nl   i  nl   s  sp  nl   i  nl
+0000040   s  sp  nl   a  sp  nl   t  nl   e  nl   s  nl   t  nl   .  sp
+0000060  ht  sp  ht  nl   T  nl   h  nl   e  nl   r  nl   e  sp  nl   a
+0000100  nl   r  nl   e  sp  nl   3  sp  nl   e  nl   m  nl   p  nl   t
+0000120  nl   y  sp  nl   l  nl   i  nl   n  nl   e  nl   s  sp  nl   a
+0000140  nl   f  nl   t  nl   e  nl   r  sp  nl   t  nl   h  nl   i  nl
+0000160   s  sp  nl   o  nl   n  nl   e  nl   :  sp  ht  sp  ht  sp  ht
+0000200  sp  ht  nl   E  nl   n  nl   d  nl   .  sp  ht  nl
+0000215
 -----
 
 The hexdump transformation format will be simpler than the format above: All output consist of a 2-digit upper-case hexadecimal number representing the next byte.
