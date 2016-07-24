@@ -9,7 +9,7 @@ cleanup() {
 }
 TD=
 trap cleanup 0
-trap 'exit $?' INT
+trap 'exit $?' INT TERM QUIT HUP
 
 redir_from() {
 	local source; source=$1; shift
