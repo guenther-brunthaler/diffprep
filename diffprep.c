@@ -693,7 +693,6 @@ static int actual_main(int argc, char **argv) {
                } else {
                   /* <wc> is a 'word' character. */
                   switch (state) {
-                     default: assert(state == st_initial); break;
                      case st_word:
                         if (mode == 'c') goto terminate;
                         break;
@@ -702,11 +701,10 @@ static int actual_main(int argc, char **argv) {
                          * can output the SPACEs literally. */
                         assert(nsp >= 1 && nsp <= sizeof wse - 1);
                         do ck_putc(lit_SPACE); while (--nsp);
-                     /* Fall through. */
-                     case st_otherws: {
-                        state= st_word;
-                        terminate: ck_putc('\n');
-                     }
+                     case st_otherws: terminate:
+                        ck_putc('\n');
+                        /* Fall through. */
+                     default: state= st_word;
                   }
                   ck_write(c, nc0); /* Output <wc> literally. */
                }

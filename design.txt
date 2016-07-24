@@ -66,16 +66,16 @@ when dumped with "od -ta" will be transformed into the following output (also du
 In character-split mode, the output would instead be:
 
 -----
-0000000   H   i   ,  sp  nl   w  nl   o  nl   r  nl   l  nl   d  nl   !
-0000020  sp  ht  sp  ht  nl   T  nl   h  nl   i  nl   s  sp  nl   i  nl
-0000040   s  sp  nl   a  sp  nl   t  nl   e  nl   s  nl   t  nl   .  sp
-0000060  ht  sp  ht  nl   T  nl   h  nl   e  nl   r  nl   e  sp  nl   a
-0000100  nl   r  nl   e  sp  nl   3  sp  nl   e  nl   m  nl   p  nl   t
-0000120  nl   y  sp  nl   l  nl   i  nl   n  nl   e  nl   s  sp  nl   a
-0000140  nl   f  nl   t  nl   e  nl   r  sp  nl   t  nl   h  nl   i  nl
-0000160   s  sp  nl   o  nl   n  nl   e  nl   :  sp  ht  sp  ht  sp  ht
-0000200  sp  ht  nl   E  nl   n  nl   d  nl   .  sp  ht  nl
-0000215
+0000000   H  nl   i  nl   ,  sp  nl   w  nl   o  nl   r  nl   l  nl   d
+0000020  nl   !  sp  ht  sp  ht  nl   T  nl   h  nl   i  nl   s  sp  nl
+0000040   i  nl   s  sp  nl   a  sp  nl   t  nl   e  nl   s  nl   t  nl
+0000060   .  sp  ht  sp  ht  nl   T  nl   h  nl   e  nl   r  nl   e  sp
+0000100  nl   a  nl   r  nl   e  sp  nl   3  sp  nl   e  nl   m  nl   p
+0000120  nl   t  nl   y  sp  nl   l  nl   i  nl   n  nl   e  nl   s  sp
+0000140  nl   a  nl   f  nl   t  nl   e  nl   r  sp  nl   t  nl   h  nl
+0000160   i  nl   s  sp  nl   o  nl   n  nl   e  nl   :  sp  ht  sp  ht
+0000200  sp  ht  sp  ht  nl   E  nl   n  nl   d  nl   .  sp  ht  nl
+0000217
 -----
 
 The hexdump transformation format will be simpler than the format above: All output consist of a 2-digit upper-case hexadecimal number representing the next byte.
