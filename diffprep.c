@@ -1,5 +1,5 @@
 static char const version_info[]=
-   "$APPLICATION_NAME Version 2016.204\n"
+   "$APPLICATION_NAME Version 2016.206\n"
    "\n"
    "Copyright (c) 2016 Guenther Brunthaler. All rights reserved.\n"
    "\n"
@@ -227,21 +227,6 @@ static void ck_ungetc(int c) {
       return 1;
    }
 #endif
-
-static void die_with_wchar(char const *msg, wchar_t wc) {
-   char chr[MB_LEN_MAX + 1];
-   int r;
-   if ((r= wctomb(chr, wc)) < 1) {
-      die(
-            "Cannot display error message \"%s\" for wide character"
-            " with code point %#lx!"
-         ,  msg, (unsigned long)wc
-      );
-   }
-   assert((size_t)r < sizeof chr);
-   chr[r]= '\0';
-   die(msg, chr);
-}
 
 static void appinfo(const char *text, const char *app) {
    static char const marker[]= "$APPLICATION_NAME";
@@ -542,8 +527,6 @@ static int actual_main(int argc, char **argv) {
       int const lit_HT= '\011'; /* HT of explanation above. */
       unsigned const SPACE_enc= (int)(strchr(wse, lit_SPACE) + 1 - wse);
       unsigned const HT_enc= (int)(strchr(wse, lit_HT) + 1 - wse);
-      assert(SPACE_enc >= 1 && SPACE_enc <= sizeof wse - 1);
-      assert(HT_enc >= 1 && HT_enc <= sizeof wse - 1);
       size_t const mb_cur_max= MB_CUR_MAX;
       int state= 0;
       char c[MB_LEN_MAX];
@@ -551,6 +534,8 @@ static int actual_main(int argc, char **argv) {
       int nnul, b, eof= 0;
       unsigned nsp;
       wchar_t wc;
+      assert(SPACE_enc >= 1 && SPACE_enc <= sizeof wse - 1);
+      assert(HT_enc >= 1 && HT_enc <= sizeof wse - 1);
       {
          /* Determine the length of the MBCS-encoding of L'\0'. */
          char nul[MB_LEN_MAX];
@@ -631,20 +616,19 @@ static int actual_main(int argc, char **argv) {
                   ck_putc(lit_HT);
                   assert(state == 2);
                } else if (iswspace(wc)) {
-                  unsigned enc;
+                  /* Whitespace which cannot use an abbreviated literal form
+                   * if it needs encoding. */
+                  char const *found;
+                  if (
+                        wc < (wchar_t)128 /* ASCII? */
+                     && (found= strchr(wse, (char)(unsigned char)wc))
+                  )
                   {
-                     char const *found;
-                     enc=
-                           wc < (wchar_t)128
-                           && (found= strchr(wse, (char)(unsigned char)wc))
-                        ?  enc= wse - found + 1
-                        :  0
-                     ;
-                  }
-                  assert(enc <= sizeof wse - 1);
-                  switch (state) {
-                     case 1:
-                        if (enc) {
+                     /* A whitespace character which needs to be encoded. */
+                     unsigned enc= wse - found + 1;
+                     assert(enc >= 1 && enc <= sizeof wse - 1);
+                     switch (state) {
+                        case 1:
                            /* Whitespace which needs encoding following
                             * SPACEs. That's unfortunate. We have to encode
                             * all the SPACEs. */
@@ -654,23 +638,32 @@ static int actual_main(int argc, char **argv) {
                               for (i= SPACE_enc; i--; ) ck_putc(lit_SPACE);
                               ck_putc(lit_HT);
                            } while (--nsp);
+                           /* Fall through. */
+                        case 0: state= 2; /* Fall through. */
+                        default: {
+                           assert(state == 2);
                            /* Encode <wc> itself. */
                            do ck_putc(lit_SPACE); while (--enc);
                            ck_putc(lit_HT);
-                           state= 2;
                            break;
-                        } else {
+                           ck_write(c, nc0); /* Output <wc> literally. */
+                        }
+                     }
+                  } else {
+                     /* Some other whitespace character which needs no
+                      * encoding. */
+                     switch (state) {
+                        case 1:
                            /* Whitespace which does not need encoding
                             * following SPACEs. That's fine. We can output the
                             * SPACEs literally. */
                            assert(nsp >= 1 && nsp <= sizeof wse - 1);
                            do ck_putc(lit_SPACE); while (--nsp);
+                        case 0: state= 2; /* Fall through. */
+                        default: {
+                           assert(state == 2);
+                           ck_write(c, nc0); /* Output <wc> literally. */
                         }
-                        /* Fall through. */
-                     case 0: state= 2; /* Fall through. */
-                     default: {
-                        assert(state == 2);
-                        ck_write(c, nc0); /* Output <wc> literally. */
                      }
                   }
                   assert(state == 2);
@@ -729,7 +722,6 @@ static int actual_main(int argc, char **argv) {
                      }
                      /* It is a literal whitespace character. Emit the delayed
                       * spaces before checking the character any further. */
-                     assert(wc != L'\n');
                      assert(nsp >= 1 && nsp <= sizeof wse - 1);
                      do ck_putc(lit_SPACE); while (--nsp);
                   }

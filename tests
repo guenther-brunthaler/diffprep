@@ -19,12 +19,22 @@ run() {
 	{
 		echo "There was a problem executing the following command:"
 		echo ">>>$*<<<"
-		echo "Examnine, then 'exit' to quit."
+		echo "Examine, then 'exit' to quit."
 	} >& 2
 	xterm -e "$SHELL" -l
 	false || exit
 }
 
+verbose=true
+while getopts q opt
+do
+	case $opt in
+		q) verbose=false;;
+		*) false || exit
+	esac
+done
+shift `expr $OPTIND - 1 || :`
+test $# != 0
 make -s -- "$target"
 test -f "$target"
 test -x "$target"
@@ -33,16 +43,26 @@ for f
 do
 	test -f "$f"
 	# For examiner's sake.
+	$verbose && echo "Test case '$f':" >& 2
 	printf '%s\n' "$f" > "$TD"/origin
 	cat "$f" > "$TD"/from
 	cp -p -- "$target" "$TD"/
-	for modes in bB mM xX wW cC
+	for modes in bB xX baB xaX wW cC
 	do
 		into=${modes%?}
-		back=${modes#?}
+		back=${modes#"$into"}
+		$verbose && printf %s "Options -$into" >& 2
 		run ./"$target" -$into "$TD"/from > "$TD"/into
+		$verbose && printf %s " and -$back" >& 2
 		run redir_output "$TD"/back ./"$target" -$back < "$TD"/into
-		run cmp -s -- ""$TD"/back" "$f"
+		set cmp -s -- ""$TD"/back" "$f"
+		if "$@"
+		then
+			echo " passed."
+		else
+			echo " FAILED!"
+			run "$@"; false || exit
+		fi
 	done
 done
 echo "All tests passed!" >& 2
