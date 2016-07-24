@@ -1,7 +1,6 @@
 #! /bin/sh
 set -e
 target=diffprep
-evil_generator=./gen_evil
 
 cleanup() {
 	local rc; rc=$?
@@ -30,6 +29,15 @@ launch() {
 	eval $launched_pid_varname'=$!'
 }
 
+say() {
+	printf '%s\n' "$*" >& 2
+}
+
+die() {
+	say "$*"
+	false || exit
+}
+
 run() {
 	"$@" && return
 	{
@@ -46,14 +54,16 @@ run() {
 # original. The remaining characters are the (clustered) option characters for
 # transforming the original.
 tests='bB xX baB xaX wW cC'
+single_test='cC'
+tests_overridden=false
 verbose=true
-include_evil=false
-while getopts qt:e opt
+args_are_generators=false
+while getopts qt:g opt
 do
 	case $opt in
+		g) args_are_generators=true;;
 		q) verbose=false;;
-		t) tests=$OPTARG;;
-		e) include_evil=true;;
+		t) tests=$OPTARG; tests_overridden=true;;
 		*) false || exit
 	esac
 done
@@ -66,105 +76,137 @@ run test -f "$target"
 run test -x "$target"
 TD=`mktemp -d -- "${TMPDIR:-/tmp}/${0##*/}.XXXXXXXXXX"`
 
-if $include_evil
-then
-	fifos='orig from into back cmp'
-	test -x "$evil_generator"
-	waits=
+process_stream() {
+	local procs fifos f p rc rcd worst_rc
+	procs='from into back cmp'
+	fifos="$procs orig"
 	for f in $fifos
 	do
 		mkfifo -- "$TD"/$f
-		waits="$waits ${f}_pid"
 	done
-	$verbose && echo "Evil test case:" >& 2
-	for modes in $tests
+	run test ${#1} -ge 2
+	into=${1%?}
+	back=${1#"$into"}
+	$verbose && printf %s "-$into" >& 2
+	run launch from_pid redir_to "$TD"/from tee "$TD"/orig
+	run launch into_pid redir_to "$TD"/into redir_from "$TD"/from \
+		./"$target" -$into
+	$verbose && printf %s " and -$back" >& 2
+	run launch back_pid redir_to "$TD"/back redir_from "$TD"/into \
+		./"$target" -$back
+	run launch cmp_pid cmp -s -- "$TD"/back "$TD"/orig
+	worst_rc=0
+	for p in $procs
 	do
-		run test ${#modes} -ge 2
-		into=${modes%?}
-		back=${modes#"$into"}
-		$verbose && printf %s "-$into" >& 2
-		run launch from_pid redir_to "$TD"/from "$evil_generator"
-		run launch into_pid redir_to "$TD"/into redir_from "$TD"/from \
-			./"$target" -$into
-		$verbose && printf %s " and -$back" >& 2
-		run launch back_pid redir_to "$TD"/back redir_from "$TD"/into \
-			./"$target" -$back
-		run launch orig_pid redir_to "$TD"/orig "$evil_generator"
-		run launch cmp_pid cmp -s -- "$TD"/back "$TD"/orig
-		worst_rc=0
-		for f in $fifos
-		do
-			if eval "wait \$${f}_pid"
-			then
-				:
-			else
-				rc=$?
-				if test $rc -gt 128
-				then
-					if rcd=`kill -l $rc 2> /dev/null`
-					then
-						if test "$rcd" = PIPE
-						then
-							rc=0
-						else
-							rcd="signal $rcd"
-						fi
-					fi
-				else
-					rcd=
-				fi
-				if test $rc != 0
-				then
-					test -z "$rcd" && rcd="return code $rc"
-					eval "cmd=\$${f}_pid_cmd"
-					echo "Command >>>$cmd<<< failed" \
-						"with $rcd!" >& 2
-					test $rc -gt $worst_rc && worst_rc=$rc
-				fi
-			fi
-		done
-		if (exit $worst_rc)
+		if eval "wait \$${p}_pid"
 		then
-			echo " passed." >& 2
+			:
 		else
-			echo " FAILED!" >& 2
-			exit $worst_rc
+			rc=$?
+			if test $rc -gt 128
+			then
+				if rcd=`kill -l $rc 2> /dev/null`
+				then
+					if test "$rcd" = PIPE
+					then
+						rc=0
+					else
+						rcd="signal $rcd"
+					fi
+				fi
+			else
+				rcd=
+			fi
+			if test $rc != 0
+			then
+				test -z "$rcd" && rcd="return code $rc"
+				eval "cmd=\$${p}_pid_cmd"
+				say "Command >>>$cmd<<< failed" \
+					"with $rcd!"
+				test $rc -gt $worst_rc && worst_rc=$rc
+			fi
 		fi
+	done
+	if (exit $worst_rc)
+	then
+		say " passed."
+	else
+		say " FAILED!"
+		exit $worst_rc
+	fi
+	# Unfortunately, using "local" somewhere other than at the beginning
+	# of a function is not portable. But at least we can unset the
+	# dynamically created variables.
+	for p in $procs
+	do
+		unset ${p}_pid
+		unset ${p}_pid_cmd
 	done
 	for f in $fifos
 	do
-		unset ${f}_pid
 		rm -- "$TD"/$f
 	done
-fi
-run test $# != 0
-examine=true
-for f
-do
-	test -f "$f"
-	# For examiner's sake.
-	$verbose && echo "Test case '$f':" >& 2
-	printf '%s\n' "$f" > "$TD"/origin
-	cat "$f" > "$TD"/from
-	cp -p -- "$target" "$TD"/
-	for modes in $tests
+}
+
+if $args_are_generators
+then
+	test $# != 0 || die "No generator has been specified!"
+	mkfifo "$TD"/gen
+	for generator
 	do
-		run test ${#modes} -ge 2
-		into=${modes%?}
-		back=${modes#"$into"}
-		$verbose && printf %s "-$into" >& 2
-		run redir_to "$TD"/into ./"$target" -$into "$TD"/from
-		$verbose && printf %s " and -$back" >& 2
-		run redir_from "$TD"/into redir_to "$TD"/back \
-			./"$target" -$back
-		set cmp -s -- "$TD"/back "$f"
-		if "$@"
-		then
-			echo " passed." >& 2
-		else
-			echo " FAILED!" >& 2
-			run "$@"; false || exit
-		fi
+		$verbose && say "Test case from generator '$generator':"
+		run test -f "$generator"; run test -x "$generator"
+		for modes in $tests
+		do
+			launch gen_pid redir_to "$TD"/gen "$generator"
+			rc=0; (process_stream "$modes") < "$TD"/gen || rc=$?
+			if test $rc != 0
+			then
+				kill $gen 2> /dev/null || :
+			fi
+			rc2=0; wait $gen || rc2=$?
+			test $rc2 -gt $rc && rc=$rc2
+			test $rc != 0 && exit $rc
+		done
 	done
-done
-echo "All tests passed!" >& 2
+elif test $# = 0
+then
+	$tests_overridden || tests=$single_test
+	if expr x"$tests" : x'.*[[:space:]]' > /dev/null
+	then
+		die "Only a single test is allowed when reading from $1!"
+	fi
+	$verbose && say "Test case from standard input:"
+	process_stream "$tests"
+else
+	examine=true
+	for f
+	do
+		test -f "$f"
+		# For examiner's sake.
+		$verbose && say "Test case '$f':"
+		printf '%s\n' "$f" > "$TD"/origin
+		cat "$f" > "$TD"/from
+		cp -p -- "$target" "$TD"/
+		for modes in $tests
+		do
+			run test ${#modes} -ge 2
+			into=${modes%?}
+			back=${modes#"$into"}
+			$verbose && printf %s "-$into" >& 2
+			run redir_to "$TD"/into ./"$target" -$into "$TD"/from
+			$verbose && printf %s " and -$back" >& 2
+			run redir_from "$TD"/into redir_to "$TD"/back \
+				./"$target" -$back
+			set cmp -s -- "$TD"/back "$f"
+			if "$@"
+			then
+				say " passed."
+			else
+				say " FAILED!"
+				run "$@"; false || exit
+			fi
+		done
+	done
+fi
+say "All tests passed!"
