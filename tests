@@ -25,19 +25,27 @@ run() {
 	false || exit
 }
 
+# The last character in each of the space-separated groups needs to be the
+# option character for converting back the transformed test case into the
+# original. The remaining characters are the (clustered) option characters for
+# transforming the original.
+tests='bB xX baB xaX wW cC'
 verbose=true
-while getopts q opt
+while getopts qt: opt
 do
 	case $opt in
 		q) verbose=false;;
+		t) tests=$OPTARG;;
 		*) false || exit
 	esac
 done
 shift `expr $OPTIND - 1 || :`
-test $# != 0
-make -s -- "$target"
-test -f "$target"
-test -x "$target"
+test -n "$SHELL"
+run test -n "$tests"
+run test $# != 0
+run make -s -- "$target"
+run test -f "$target"
+run test -x "$target"
 TD=`mktemp -d -- "${TMPDIR:-/tmp}/${0##*/}.XXXXXXXXXX"`
 for f
 do
@@ -47,11 +55,12 @@ do
 	printf '%s\n' "$f" > "$TD"/origin
 	cat "$f" > "$TD"/from
 	cp -p -- "$target" "$TD"/
-	for modes in bB xX baB xaX wW cC
+	for modes in $tests
 	do
+		run test ${#modes} -ge 2
 		into=${modes%?}
 		back=${modes#"$into"}
-		$verbose && printf %s "Options -$into" >& 2
+		$verbose && printf %s "-$into" >& 2
 		run ./"$target" -$into "$TD"/from > "$TD"/into
 		$verbose && printf %s " and -$back" >& 2
 		run redir_output "$TD"/back ./"$target" -$back < "$TD"/into
