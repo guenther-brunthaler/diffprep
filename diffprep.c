@@ -1,7 +1,7 @@
 static char const version_info[]=
-   "$APPLICATION_NAME Version 2016.206.2\n"
+   "$APPLICATION_NAME Version 17.119\n"
    "\n"
-   "Copyright (c) 2016 Guenther Brunthaler. All rights reserved.\n"
+   "Copyright (c) 2016-2017 Guenther Brunthaler. All rights reserved.\n"
    "\n"
    "This program is free software.\n"
    "Distribution is permitted under the terms of the GPLv3.\n"
@@ -150,8 +150,7 @@ static char const *const help[]= {
    #include <locale.h>
 #endif
 
-#if defined __STDC_VERSION__ && __STDC_VERSION__ >= 199901 \
-    && !CONFIG_NO_LOCALE
+#if __STDC_VERSION__ >= 199901 && !CONFIG_NO_LOCALE
    #include <wctype.h>
 #else
    #include <ctype.h>

@@ -2,8 +2,12 @@ This project is about a preprocessor/postprocessor for "diff" and
 "patch", allowing to create word-, character-, byte- or bit-based
 diffs and patches.
 
-It requires an ANSI-C 89 capable C compiler and a standard "make"
-utility.
+It can also be "mis-used" as a hex-dump or bit-dump utility,
+supporting the conversion of manually edited dump files back to
+the original data (similar to "xxd -r").
+
+It requires an ANSI-C 89 capable C compiler and a standard
+POSIX-compliant "make" utility.
 
 Run
 
