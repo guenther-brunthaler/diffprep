@@ -19,6 +19,15 @@ It requires an ANSI-C 89 capable C compiler and a standard
 POSIX-compliant "make" utility for building.
 
 
+Keywords
+--------
+
+word-diff, character-diff, bit-diff, hexdump, reverse hexdump,
+bit-dump, reverse bit-dump, word-based merge, character-based
+merge, bit-based merge, word-wrapped merge, binary diff, binary
+patch, binary merge.
+
+
 Examples
 --------
 
@@ -40,7 +49,8 @@ Create an editable hexdump of file data.bin with 20 bytes per line:
 
 	$ diffprep -xn20 data.bin > data-dump.txt
 
-Re-create binary dile data.bin from after manually editing data-dump.txt:
+Re-create binary file data.bin from data-dump.txt after manually
+editing that file:
 
 	$ diffprep -X data-dump.txt > data.bin
 
