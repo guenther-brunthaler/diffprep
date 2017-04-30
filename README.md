@@ -15,8 +15,8 @@ the original binary data (similar to "xxd -r").
 The utility has no external library dependencies and only uses
 the standard C runtime library.
 
-It requires an ANSI-C 89 capable C compiler and a standard
-POSIX-compliant "make" utility for building.
+It is written in portable ANSI-C 89 as a single source file, and
+should therefore be easy to build and install.
 
 
 Keywords
@@ -74,7 +74,7 @@ show the different RGB pixels (requires imagemagick to be installed):
 	$ ppm2rgb() { local x; for x in `seq 3`; do read x; done; cat; }
 	$ ppm2rgb < base.ppm > base.rgb
 	$ ppm2rgb < base_w_logo.ppm > base_w_logo.rgb
-	$ diffprep -xn3 base-x.rgb > base-x.txt
+	$ diffprep -xn3 base.rgb > base-x.txt
 	$ diffprep -xn3 base_w_logo.rgb > base_w_logo-x.txt
 	$ diff -u base-x.txt base_w_logo-x.txt
 
@@ -87,7 +87,7 @@ Display the different bits of two bitstream files 1.bin and 2.bin:
 How to build
 ------------
 
-It simple: Just run
+Under UNIX, Linux, Cygwin or MinGW it is simple: Just run
 
 	$ make
 
@@ -96,7 +96,17 @@ specific compiler flags, you can invoke 'make' like this instead:
 
 	$ make CFLAGS="-D NDEBUG -O2 -s"
 
-Then run
+If you don't have a POSIX-compliant "make" utility, but some
+C/C++ IDE is available instead, just create a new C project in
+your IDE and import diffprep.c as the only source file. Then
+build the project.
+
+If you have neither "make" nor an IDE, you might still have a C compiler
+installed. Try this:
+
+	$ cc -o diffprep -D NDEBUG -s -O2 diffprep.c
+
+In all cases, after successful compilation, run
 
 	$ ./diffprep -h
 
