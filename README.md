@@ -37,9 +37,9 @@ Word-diff files 1.txt and 2.txt with bash as shell:
 
 The same with a normal POSIX shell:
 
-	$ diffprep 1.txt > 1-w.txt
-	$ diffprep 2.txt > 2-w.txt
-	$ diff -u 1-w.txt 2-w.txt
+	$ diffprep 1.txt > 1.words
+	$ diffprep 2.txt > 2.words
+	$ diff -u 1.words 2.words
 
 Create a hex-dump similar to "hexdump -C 1.txt":
 
@@ -47,24 +47,24 @@ Create a hex-dump similar to "hexdump -C 1.txt":
 
 Create an editable hexdump of file data.bin with 20 bytes per line:
 
-	$ diffprep -xn20 data.bin > data-dump.txt
+	$ diffprep -xn20 data.bin > data.hex
 
-Re-create binary file data.bin from data-dump.txt after manually
+Re-create binary file data.bin from data.hex after manually
 editing that file:
 
-	$ diffprep -X data-dump.txt > data.bin
+	$ diffprep -X data.hex > data.bin
 
 Create a patch out-w.patch from the word-based differences of 1.txt and 2.txt
 which treats all whitespace equal (newlines and normal spaces will be
 considered equal). Then apply that patch to some file 1-modified.txt, again
 treating newlines and spaces as interchangable:
 
-	$ diffprep 1.txt > 1-w.txt
-	$ diffprep 2.txt > 2-w.txt
-	$ diff -bu 1-w.txt 2-w.txt > out-w.patch
-	$ diffprep 1-modified.txt > 1-modified-w.txt
-	$ patch -l 1-modified-w.txt out-w.patch
-	$ diffprep -W 1-modified-w.txt > 1-modified.txt
+	$ diffprep 1.txt > 1.words
+	$ diffprep 2.txt > 2.words
+	$ diff -bu 1.words 2.words > out.wdiffs
+	$ diffprep 1-modified.txt > 1-modified.words
+	$ patch -l 1-modified.words out.wdiffs
+	$ diffprep -W 1-modified.words > 1-modified.txt
 
 Compare two 24-bit RGB bitmap image files base.png and base_w_logo.png and
 show the different RGB pixels (requires imagemagick to be installed):
@@ -74,15 +74,15 @@ show the different RGB pixels (requires imagemagick to be installed):
 	$ ppm2rgb() { local x; for x in `seq 3`; do read x; done; cat; }
 	$ ppm2rgb < base.ppm > base.rgb
 	$ ppm2rgb < base_w_logo.ppm > base_w_logo.rgb
-	$ diffprep -xn3 base.rgb > base-x.txt
-	$ diffprep -xn3 base_w_logo.rgb > base_w_logo-x.txt
-	$ diff -u base-x.txt base_w_logo-x.txt
+	$ diffprep -xn3 base.rgb > base.hex
+	$ diffprep -xn3 base_w_logo.rgb > base_w_logo.hex
+	$ diff -u base.hex base_w_logo.hex
 
 Display the different bits of two bitstream files 1.bin and 2.bin:
 
-	$ diffprep -b 1.bin > 1-b.txt
-	$ diffprep -b 2.bin > 2-b.txt
-	$ diff -u 1-b.txt 2-b.txt
+	$ diffprep -b 1.bin > 1.bits
+	$ diffprep -b 2.bin > 2.bits
+	$ diff -u 1.bits 2.bits
 
 How to build
 ------------
@@ -115,14 +115,13 @@ for displaying help, copyright and usage information.
 You might also want to to install the built executable, so that
 it can be invoked from anywhere:
 
-	$ sudo cp diffprep /usr/local/bin/ \
-	  && sudo chmod +x /usr/local/bin/diffprep
+	$ sudo cp diffprep /usr/local/bin/
 
 
 License Information
 -------------------
 
-Copyright (c) 2016 Guenther Brunthaler. All rights reserved.
+Copyright (c) 2016-2021 Guenther Brunthaler. All rights reserved.
 
 This program is free software.
 Distribution is permitted under the terms of the GPLv3.
