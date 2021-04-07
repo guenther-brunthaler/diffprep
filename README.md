@@ -1,5 +1,6 @@
 diffprep
 ========
+v2021.97
 
 Abstract
 --------
@@ -54,7 +55,7 @@ editing that file:
 
 	$ diffprep -X data.hex > data.bin
 
-Create a patch out-w.patch from the word-based differences of 1.txt and 2.txt
+Create a patch out.wdiffs from the word-based differences of 1.txt and 2.txt
 which treats all whitespace equal (newlines and normal spaces will be
 considered equal). Then apply that patch to some file 1-modified.txt, again
 treating newlines and spaces as interchangable:
@@ -62,6 +63,7 @@ treating newlines and spaces as interchangable:
 	$ diffprep 1.txt > 1.words
 	$ diffprep 2.txt > 2.words
 	$ diff -bu 1.words 2.words > out.wdiffs
+
 	$ diffprep 1-modified.txt > 1-modified.words
 	$ patch -l 1-modified.words out.wdiffs
 	$ diffprep -W 1-modified.words > 1-modified.txt
@@ -74,9 +76,9 @@ show the different RGB pixels (requires imagemagick to be installed):
 	$ ppm2rgb() { local x; for x in `seq 3`; do read x; done; cat; }
 	$ ppm2rgb < base.ppm > base.rgb
 	$ ppm2rgb < base_w_logo.ppm > base_w_logo.rgb
-	$ diffprep -xn3 base.rgb > base.hex
-	$ diffprep -xn3 base_w_logo.rgb > base_w_logo.hex
-	$ diff -u base.hex base_w_logo.hex
+	$ diffprep -xn3 base.rgb > base.hex3
+	$ diffprep -xn3 base_w_logo.rgb > base_w_logo.hex3
+	$ diff -u base.hex3 base_w_logo.hex3
 
 Display the different bits of two bitstream files 1.bin and 2.bin:
 
